@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-expo-app@latest . --template blank-typescript)",
+      "Bash(npx create-expo-app@latest . --template blank-typescript --yes)",
+      "Bash(cd /tmp)",
+      "Bash(npx create-expo-app@latest ArCareer --template blank-typescript)",
+      "Bash(cp -r /tmp/ArCareer/* d:/ArCareer/)",
+      "Bash(cp -r /tmp/ArCareer/.[^.]* d:/ArCareer/)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

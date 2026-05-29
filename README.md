@@ -127,7 +127,7 @@ All model inference in the starter runs on Nebius → https://tokenfactory.nebiu
 | :-- | :-- | :-- |
 | **Speechmatics** | the coworker's *ears* (ASR + TTS) | https://www.speechmatics.com |
 | **Rime** | the coworker's *voice* (TTS) | https://rime.ai |
-| **Neuphonic** | free, local self-hosted TTS — drop-in for Rime | https://github.com/neuphonic/neutts |
+| **Neuphonic** | free, local self-hosted TTS | https://github.com/neuphonic/neutts |
 | **Arklex** | simulation toolkit | https://github.com/arklexai/arksim |
 
 > The starter wires Speechmatics + Rime + Nebius together for you. Swap in any partner.

@@ -10,7 +10,7 @@ export default function HomePage() {
       <header className="shrink-0 border-b border-slate-200/80 bg-white/80 backdrop-blur px-6 py-4">
         <div className="max-w-[1440px] mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">NUWA AI</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">HuddleX</h1>
             <p className="text-sm text-slate-500">Persistent Autonomous Voice Agent</p>
           </div>
           <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">

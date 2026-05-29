@@ -1,0 +1,9 @@
+flows:
+  general_chat:
+    description: >
+      Handle general conversation with the currently active expert persona.
+      This is the default flow for any question, message, or statement that does
+      not trigger a more specific flow. The action retrieves relevant knowledge
+      from the expert's vector store and generates a response in their voice.
+    steps:
+      - action: action_persona_chat

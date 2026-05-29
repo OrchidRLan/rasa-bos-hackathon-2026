@@ -1,0 +1,49 @@
+# Admin config — one entry per expert persona.
+# seed_personas.py reads this to fetch Wikipedia and build Chroma embeddings.
+# x_posts_file points to a pre-fetched JSON of tweets (see DATABASE.md schema).
+
+personas:
+  - id: elon_musk
+    display_name: Elon Musk
+    x_handle: "@elonmusk"
+    x_posts_file: data/personas/raw/elon_musk_tweets.json
+    wikipedia_url: https://en.wikipedia.org/wiki/Elon_Musk
+    rime_voice_id: ""          # fill in after Rime account setup
+    avatar_color: from-slate-700 to-slate-900
+    initials: EM
+
+  - id: sam_altman
+    display_name: Sam Altman
+    x_handle: "@sama"
+    x_posts_file: data/personas/raw/sam_altman_tweets.json
+    wikipedia_url: https://en.wikipedia.org/wiki/Sam_Altman
+    rime_voice_id: ""
+    avatar_color: from-blue-700 to-blue-900
+    initials: SA
+
+  - id: paul_graham
+    display_name: Paul Graham
+    x_handle: "@paulg"
+    x_posts_file: data/personas/raw/paul_graham_tweets.json
+    wikipedia_url: https://en.wikipedia.org/wiki/Paul_Graham_(programmer)
+    rime_voice_id: ""
+    avatar_color: from-orange-600 to-red-700
+    initials: PG
+
+  - id: naval_ravikant
+    display_name: Naval Ravikant
+    x_handle: "@naval"
+    x_posts_file: data/personas/raw/naval_ravikant_tweets.json
+    wikipedia_url: https://en.wikipedia.org/wiki/Naval_Ravikant
+    rime_voice_id: ""
+    avatar_color: from-violet-700 to-purple-900
+    initials: NR
+
+  - id: jensen_huang
+    display_name: Jensen Huang
+    x_handle: "@jensenhuang"
+    x_posts_file: data/personas/raw/jensen_huang_tweets.json
+    wikipedia_url: https://en.wikipedia.org/wiki/Jensen_Huang
+    rime_voice_id: ""
+    avatar_color: from-green-700 to-emerald-900
+    initials: JH

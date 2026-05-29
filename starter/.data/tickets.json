@@ -1,0 +1,18 @@
+{
+  "TCK-5314": {
+    "summary": "Our billing dashboard has been showing the wrong invoice totals for enterprise customers since this morning",
+    "category": "billing",
+    "priority": "urgent",
+    "email": "example.com",
+    "status": "open",
+    "created_at": "2026-05-29T12:50:57.163295+00:00"
+  },
+  "TCK-1333": {
+    "summary": "it's not working",
+    "category": "billing",
+    "priority": "high",
+    "email": "rod@example.com",
+    "status": "open",
+    "created_at": "2026-05-29T12:53:20.228835+00:00"
+  }
+}

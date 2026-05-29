@@ -1,0 +1,40 @@
+# End-to-end test for the support-ticket flow.
+# Custom actions are stubbed so this runs without the action server:
+#   RASA_PRO_BETA_STUB_CUSTOM_ACTION=true rasa test e2e tests/e2e
+
+stub_custom_actions:
+  action_create_ticket:
+    events:
+      - event: slot
+        name: ticket_id
+        value: "TCK-9999"
+
+test_cases:
+  - test_case: user logs an urgent billing ticket
+    steps:
+      - user: "Hi, I need to open a support ticket."
+        assertions:
+          - flow_started:
+              operator: "all"
+              flow_ids:
+                - log_support_ticket
+          - bot_uttered:
+              utter_name: utter_ask_issue_summary
+      - user: "Our billing dashboard shows the wrong invoice totals for enterprise customers."
+        assertions:
+          - slot_was_set:
+              - name: issue_summary
+      - user: "It's a billing issue and it's urgent."
+        assertions:
+          - slot_was_set:
+              - name: issue_category
+                value: billing
+              - name: issue_priority
+                value: urgent
+      - user: "Send updates to rod@example.com."
+        assertions:
+          - slot_was_set:
+              - name: contact_email
+          - action_executed: action_create_ticket
+          - bot_uttered:
+              utter_name: utter_ticket_created

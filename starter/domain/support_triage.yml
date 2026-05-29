@@ -1,0 +1,49 @@
+version: "3.1"
+
+actions:
+  - action_create_ticket
+
+slots:
+  issue_summary:
+    type: text
+    mappings:
+      - type: from_llm
+  issue_category:
+    type: categorical
+    values:
+      - bug
+      - billing
+      - access
+      - other
+    mappings:
+      - type: from_llm
+  issue_priority:
+    type: categorical
+    values:
+      - low
+      - medium
+      - high
+      - urgent
+    mappings:
+      - type: from_llm
+  contact_email:
+    type: text
+    mappings:
+      - type: from_llm
+  # Set by action_create_ticket — never filled by the LLM.
+  ticket_id:
+    type: text
+    mappings:
+      - type: controlled
+
+responses:
+  utter_ask_issue_summary:
+    - text: "I can log that for you. In a sentence or two, what's going on?"
+  utter_ask_issue_category:
+    - text: "Got it. Is this a bug, a billing issue, an access problem, or something else?"
+  utter_ask_issue_priority:
+    - text: "How urgent is it — low, medium, high, or urgent?"
+  utter_ask_contact_email:
+    - text: "What's the best email to send you updates at?"
+  utter_ticket_created:
+    - text: "Done — I've logged ticket {ticket_id} as a {issue_priority}-priority {issue_category} issue. Updates will go to {contact_email}."

@@ -1,0 +1,30 @@
+version: "3.1"
+
+actions:
+  - action_lookup_ticket
+
+slots:
+  lookup_ticket_id:
+    type: text
+    mappings:
+      - type: from_llm
+  ticket_found:
+    type: bool
+    mappings:
+      - type: controlled
+  ticket_status:
+    type: text
+    mappings:
+      - type: controlled
+  ticket_summary:
+    type: text
+    mappings:
+      - type: controlled
+
+responses:
+  utter_ask_lookup_ticket_id:
+    - text: "Sure — what's the ticket number? They look like TCK-1234."
+  utter_ticket_status:
+    - text: "Ticket {lookup_ticket_id} ({ticket_summary}) is currently {ticket_status}."
+  utter_ticket_not_found:
+    - text: "I couldn't find ticket {lookup_ticket_id}. Want me to log a new one?"

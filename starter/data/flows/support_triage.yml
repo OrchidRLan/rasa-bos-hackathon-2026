@@ -1,0 +1,21 @@
+flows:
+  log_support_ticket:
+    description: >
+      Log a new support or operations ticket for the user. Triggers when the user
+      reports a problem, or wants to open, file, raise, or create a ticket, or asks
+      for help with an issue affecting their team's tools or workflow.
+    # Note: ticket_id is set by action_create_ticket. Slots set in custom actions
+    # persist by default, so it stays available after the flow ends — no need to
+    # list it in persisted_slots (which only accepts collect/set_slots slots).
+    steps:
+      - collect: issue_summary
+        description: A short free-text description of the problem the user is reporting.
+      - collect: issue_category
+        description: "The kind of issue: bug, billing, access, or other."
+      - collect: issue_priority
+        description: "How urgent the issue is: low, medium, high, or urgent."
+      - collect: contact_email
+        description: The email address where the user wants ticket updates sent.
+      - action: action_create_ticket
+      - action: utter_ticket_created
+      - action: utter_can_do_something_else

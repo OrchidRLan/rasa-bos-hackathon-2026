@@ -1,0 +1,20 @@
+[
+  {
+    "id": "RB-001",
+    "title": "Reset a customer's SSO access",
+    "tags": ["access", "sso", "login"],
+    "body": "1. Find the user in the admin console. 2. Revoke active sessions. 3. Send a re-enrolment link. 4. Confirm MFA re-binds on next login."
+  },
+  {
+    "id": "RB-002",
+    "title": "Investigate wrong invoice totals",
+    "tags": ["billing", "invoices", "finance"],
+    "body": "1. Pull the billing run id. 2. Compare line items to the metering export. 3. Check for duplicate usage events. 4. Re-run reconciliation and notify finance."
+  },
+  {
+    "id": "RB-003",
+    "title": "Triage a production incident",
+    "tags": ["incident", "oncall", "bug"],
+    "body": "1. Declare severity. 2. Open an incident channel. 3. Assign an incident commander. 4. Mitigate first, root-cause later. 5. Post a timeline."
+  }
+]

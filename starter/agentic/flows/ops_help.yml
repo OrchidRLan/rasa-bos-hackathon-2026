@@ -1,0 +1,8 @@
+flows:
+  ops_help:
+    description: >
+      Answer operational how-to and troubleshooting questions by researching the
+      team's internal runbooks. Triggers when the user asks how to do something, how
+      a process works, or for guidance that requires looking information up.
+    steps:
+      - call: ops_assistant

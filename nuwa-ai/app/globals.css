@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@source "../components";
+@source "../hooks";
+@source "../lib";
+
+@theme inline {
+  --color-background: #f4f6fa;
+  --color-card: #ffffff;
+  --color-accent: #2563eb;
+}
+
+html,
+body {
+  background: #f4f6fa;
+  color: #0f172a;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}

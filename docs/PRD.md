@@ -65,9 +65,11 @@
 1. 用户打开 Web App
    └─▶ 看到 5 个人格卡片（头像、姓名、今日 briefing）
 
-2. 用户点击/说出选择某个人格
+2. 用户开启一个新的对话主题
+在这条对话记录里能
+点击/说出选择某个人格
    └─▶ CALM flow 激活 switch_persona
-       └─▶ Action server 加载该人格的 Chroma 集合 + briefing
+       └─▶ Action server 加载该人格的 Chroma 集合 + briefing + 此对话框用户和其他人格的对话记录
            └─▶ 对话框激活，system prompt 注入：
                [人格知识] + [用户偏好] + [跨人格历史]
 

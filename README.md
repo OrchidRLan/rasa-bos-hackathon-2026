@@ -2,7 +2,7 @@
 
 <h1>🤖 Always-On AI Coworker Hackathon</h1>
 
-<h3>Boston Tech Week 2026 · Hosted by <a href="https://rasa.com">Rasa</a> · Kendall Square</h3>
+<h3>Boston Tech Week 2026 · Hosted by <a href="https://rasa.com">Rasa</a> · 2 Days, 2 Venues</h3>
 
 <p>
   <b>We're done with the 5-minute AI demo.</b><br/>
@@ -19,11 +19,12 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Pitch_Deadline-Sat_05%2F30_·_4%3A00_PM-E11D48?style=for-the-badge" alt="Pitch deadline Saturday 5/30 4PM"/>
+  <img src="https://img.shields.io/badge/Demos_Start-Sat_05%2F30_·_2%3A00_PM-E11D48?style=for-the-badge" alt="Demos start Saturday 5/30 2PM"/>
   <img src="https://img.shields.io/badge/Team_Size-Max_5-475569?style=for-the-badge" alt="Max team size 5"/>
 </p>
 
 <p>
+  <a href="#-schedule--venues">Schedule</a> ·
   <a href="#-start-here">Quickstart</a> ·
   <a href="#-the-stack--resources">Stack</a> ·
   <a href="#-presentation--judging">Prizes</a> ·
@@ -36,9 +37,37 @@
 <hr/>
 
 > [!IMPORTANT]
-> **📶 Wi-Fi:** `TBD`  ·  **Password:** `TBD`
-> **🗓️ Pitch submission deadline:** **Saturday 05/30, 4:00 PM**
+> **🗓️ Demos begin:** **Saturday 05/30, 2:00 PM** (submissions in by **1:45 PM**)
+> **📶 Wi-Fi:** Fri (Foundry) `TBD` · Sat (BU) **BU Guest — connects automatically**
 > **💬 Community chat:** https://info.rasa.com/community
+
+<a id="-schedule--venues"></a>
+
+## 📅 Schedule & Venues
+
+This is a **two-day event across two venues** — a Friday community kickoff and a Saturday hack-and-pitch day.
+
+| Day | Venue | Hours | What's happening |
+| :-- | :-- | :-- | :-- |
+| **Fri 05/29** | **The Foundry** | **10:00 AM – 9:00 PM** | Community kickoff, team formation, building & hacking |
+| **Sat 05/30** | **BU Spark! · CDS** | **11:00 AM – 4:00 PM** | Hack day, demos, voting & awards |
+
+### Saturday run of show
+
+| Time | |
+| :-- | :-- |
+| **11:00 AM** | Doors open at CDS, keep building |
+| **1:45 PM** | Submissions close |
+| **2:00 PM** | 🎤 Team presentations (3 min each, live demos) |
+| ~3:15 PM | 🗳️ Anonymous community vote |
+| ~3:45 PM | 🏆 Winners announced |
+| **4:00 PM** | Wrap |
+
+> [!NOTE]
+> **Saturday venue — Boston University, Center for Computing & Data Science (CDS).**
+> We're in the **basement rooms [CDS B62](https://www.bu.edu/classrooms/classroom/cds-b62/) + [CDS B63](https://www.bu.edu/classrooms/classroom/cds-b63/)** plus the **lounge between them**. The building is open — no badge needed; follow the directional signs at the stanchions by the door down to the basement.
+
+<hr/>
 
 <a id="-start-here"></a>
 
@@ -139,16 +168,29 @@ All model inference in the starter runs on Nebius → https://tokenfactory.nebiu
 
 ## 🏆 Presentation & Judging
 
-Your team gets **3 minutes** to pitch and demo tomorrow. **No slide decks** — we want to see live,
-working (or spinning-up) code.
+Your team gets **3 minutes** to pitch and demo on **Saturday at 2:00 PM**. **No slide decks** — we want to
+see live, working (or spinning-up) code. After the demos, **everyone votes** in an anonymous community poll
+to pick the winner in each category.
 
 ### Prizes
+
+Winning teams in each category get:
+
+- 🤝 **A working session with the founders of our partner companies** — direct access for networking and hands-on idea validation.
+- 🎁 **Gifted Claude subscriptions** for the team.
 
 | 🏆 Prize | What wins it |
 | :-- | :-- |
 | **Most Resilient Long-Term Agent** | Retains memory and handles long context windows without hallucinating. |
 | **Best Voice Coworker** | Clean audio, low latency, real triage / meetings. |
 | **Most Creative Enterprise Use Case** | A genuinely practical back-office or operations workflow. |
+
+### How voting works
+
+1. Submit your project by **1:45 PM** Saturday.
+2. Present live starting at **2:00 PM** (3 min, no slides).
+3. After all demos, the room votes in an **anonymous poll**.
+4. Top team per category wins.
 
 ### What to look for
 
@@ -168,7 +210,7 @@ working (or spinning-up) code.
 
 Don't have a team?
 
-1. Gather near the projector screen right after the keynote.
+1. Friday at The Foundry is the best time to find one — gather near the front after the kickoff.
 2. Post your ideas or skills in the [community chat](https://info.rasa.com/community).
 3. Max team size: **5**.
 

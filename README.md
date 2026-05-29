@@ -114,6 +114,13 @@ All model inference in the starter runs on Nebius → https://tokenfactory.nebiu
 | **Command generator** (the agent's reasoning) | `Qwen3-235B-A22B-Instruct-2507` · `gpt-oss-120b` · `DeepSeek-V3.2` |
 | **Agentic sub-agent** (tool calling) | `MiniMax-M2.5` · `Kimi-K2.6` · `GLM-5` |
 
+
+<h3 align="center">
+  <picture>
+    <img alt="Rasa Banner" src="https://github.com/RasaHQ/.github/blob/readme/update-hello-rasa-community/assets/banner-rasa-1200x300.png?raw=true">
+  </picture>
+</h3>
+
 ### 🎙️ Voice & partner quickstarts
 
 | Partner | Role | Link |

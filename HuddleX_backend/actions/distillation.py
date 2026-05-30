@@ -2,6 +2,7 @@
 女娲蒸馏引擎 — Method B: full 6-dimension cognitive framework distillation.
 
 Pipeline (mirrors nuwa SKILL.md phases):
+  Phase 0   — gather source text: Wikipedia + essays + tweet transcripts + YouTube
   Phase 1   — fetch Wikipedia + X posts  (data gathering)
   Phase 1.5 — 6 parallel LLM dimension calls  (nuwa's 6 agent swarm)
   Phase 2-3 — synthesis LLM call → cognitive_framework JSON
@@ -17,6 +18,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from html.parser import HTMLParser as _BaseHTMLParser
 from pathlib import Path
 
 import httpx
@@ -58,6 +60,165 @@ DIMENSIONS = [
 ]
 
 _embed_model = None
+
+# ── Web text extraction ──────────────────────────────────────────────────────
+
+class _StripHTML(_BaseHTMLParser):
+    """No-dependency HTML → plain text extractor. Skips script/style/nav."""
+    _SKIP = {"script", "style", "nav", "header", "footer", "aside", "noscript"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._depth = 0
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag in self._SKIP:
+            self._depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIP and self._depth:
+            self._depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._depth:
+            s = data.strip()
+            if s:
+                self._parts.append(s)
+
+    def get_text(self) -> str:
+        return re.sub(r"\s+", " ", " ".join(self._parts)).strip()
+
+
+def _unshorten_url(url: str) -> str:
+    """Follow HTTP redirects (t.co / bit.ly / etc.) to the real URL."""
+    try:
+        resp = httpx.head(url, follow_redirects=True, timeout=8)
+        return str(resp.url)
+    except Exception:
+        return url
+
+
+def _fetch_text_from_url(url: str, max_chars: int = 8000) -> str:
+    """GET a URL and return stripped plain text up to max_chars."""
+    try:
+        resp = httpx.get(
+            url, follow_redirects=True, timeout=15,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; HuddleX/1.0)"},
+        )
+        resp.raise_for_status()
+        parser = _StripHTML()
+        parser.feed(resp.text)
+        return parser.get_text()[:max_chars]
+    except Exception as e:
+        print(f"[distill] fetch_text failed {url}: {e}")
+        return ""
+
+
+# ── Transcript URL extraction from tweets ───────────────────────────────────
+
+_TRANSCRIPT_PAT = re.compile(r'(?i)transcript\s*:\s*(https?://\S+)')
+
+
+def _extract_transcript_urls(posts: list[dict]) -> list[str]:
+    """
+    Parse tweet texts for 'Transcript: https://...' links, follow t.co
+    redirects, and return a deduplicated list (max 5).
+    """
+    seen: set[str] = set()
+    urls: list[str] = []
+    for post in posts:
+        for short_url in _TRANSCRIPT_PAT.findall(post.get("text", "")):
+            real = _unshorten_url(short_url.rstrip(".,;:)>\"'"))
+            if real not in seen:
+                seen.add(real)
+                urls.append(real)
+            if len(urls) >= 5:
+                return urls
+    return urls
+
+
+# ── YouTube transcript fetcher ───────────────────────────────────────────────
+
+_YT_ID_RE = re.compile(r'(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})')
+
+
+def _fetch_youtube_transcripts(video_ids: list[str], max_chars_each: int = 6000) -> str:
+    """
+    Fetch YouTube auto-captions using youtube-transcript-api.
+    Accepts bare video IDs or full YouTube URLs.
+    Returns combined text or '' if library not installed.
+    """
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
+    except ImportError:
+        print("[distill] youtube-transcript-api not installed — skipping YouTube transcripts")
+        return ""
+
+    parts: list[str] = []
+    for raw in video_ids[:5]:
+        m = _YT_ID_RE.search(raw)
+        vid = m.group(1) if m else raw  # accept bare IDs too
+        try:
+            entries = YouTubeTranscriptApi.get_transcript(vid)
+            text = " ".join(e["text"] for e in entries)[:max_chars_each]
+            parts.append(f"[YouTube {vid}]\n{text}")
+            print(f"[distill] YouTube transcript OK: {vid} ({len(text)} chars)")
+        except Exception as e:
+            print(f"[distill] YouTube transcript failed {vid}: {e}")
+    return "\n\n".join(parts)
+
+
+# ── Source text aggregator ───────────────────────────────────────────────────
+
+def gather_source_text(
+    name: str,
+    wiki_summary: str,
+    posts: list[dict],
+    content_urls: list[str] | None = None,
+    youtube_video_ids: list[str] | None = None,
+) -> tuple[str, list[dict]]:
+    """
+    Combine all available data sources into a single source_text string and
+    return a list of content_source dicts for Chroma embedding.
+
+    Returns:
+        (source_text, content_sources)
+        content_sources: [{"url": ..., "text": ..., "type": "essay"|"transcript"|"youtube"}, ...]
+    """
+    parts: list[str] = []
+    content_sources: list[dict] = []
+
+    if wiki_summary:
+        parts.append(f"[Wikipedia]\n{wiki_summary}")
+
+    # Static essay/article URLs from persona config
+    for url in (content_urls or [])[:8]:
+        text = _fetch_text_from_url(url, max_chars=6000)
+        if text:
+            parts.append(f"[Essay: {url}]\n{text}")
+            content_sources.append({"url": url, "text": text, "type": "essay"})
+            print(f"[distill] essay fetched: {url} ({len(text)} chars)")
+
+    # Transcript URLs embedded in tweets
+    for url in _extract_transcript_urls(posts):
+        text = _fetch_text_from_url(url, max_chars=4000)
+        if text:
+            parts.append(f"[Transcript: {url}]\n{text}")
+            content_sources.append({"url": url, "text": text, "type": "transcript"})
+            print(f"[distill] tweet transcript fetched: {url} ({len(text)} chars)")
+
+    # YouTube transcripts
+    if youtube_video_ids:
+        yt_text = _fetch_youtube_transcripts(youtube_video_ids)
+        if yt_text:
+            parts.append(yt_text)
+            content_sources.append({"url": "youtube", "text": yt_text, "type": "youtube"})
+
+    if parts:
+        return "\n\n---\n\n".join(parts), content_sources
+
+    return f"No source text available. Use your training knowledge about {name}.", content_sources
 
 
 def _get_embed_model():
@@ -124,7 +285,7 @@ def _research_one_dimension(
 Your dimension: {dim_label} — {dim_focus}
 
 Available source text:
-{source_text[:3000]}
+{source_text[:12000]}
 
 Using both the source text above and your training knowledge about {name}, write focused research notes covering:
 - Key patterns, beliefs, or behaviors in this dimension
@@ -333,6 +494,19 @@ def _embed(persona_id: str, persona_data: dict) -> int:
         ids.append("wiki_summary")
         metas.append({"type": "wikipedia", "section": "summary"})
 
+    # Embed essays / transcripts / YouTube content in 400-char chunks
+    for source in persona_data.get("content_sources", []):
+        src_type = source.get("type", "content")
+        src_url = source.get("url", "")
+        text = source.get("text", "")
+        chunk_size = 400
+        for i, start in enumerate(range(0, len(text), chunk_size)):
+            chunk_id = f"src_{abs(hash(src_url)) % 10**8}_{i}"
+            if chunk_id not in existing_ids:
+                docs.append(text[start : start + chunk_size])
+                ids.append(chunk_id)
+                metas.append({"type": src_type, "source_url": src_url, "chunk": i})
+
     # Also embed the cognitive framework text so it's RAG-retrievable
     framework = persona_data.get("cognitive_framework", {})
     if framework and "framework_summary" not in existing_ids:
@@ -460,15 +634,21 @@ def distill_expert(
     display_name: str,
     x_handle: str = "",
     wikipedia_url: str = "",
+    content_urls: list[str] | None = None,
+    youtube_video_ids: list[str] | None = None,
 ) -> dict:
     """
     女娲蒸馏完整流程 (Method B):
 
-    Phase 1   → fetch Wikipedia
+    Phase 0   → gather source text: Wikipedia + essays + tweet transcripts + YouTube
+    Phase 1   → fetch Wikipedia + X posts
     Phase 1.5 → 6-dimension parallel LLM research (nuwa agent swarm)
     Phase 2-3 → synthesis → cognitive_framework JSON
     Phase 4   → quality check
     Finalize  → Chroma embed + briefing + persist
+
+    content_urls:       list of essay/article URLs to scrape (optional)
+    youtube_video_ids:  list of YouTube video IDs or URLs (optional)
 
     Returns API-ready dict (same shape as list_personas_for_api entries).
     Raises ValueError if expert already exists.
@@ -495,6 +675,7 @@ def distill_expert(
         "personality_traits": [],
         "speaking_style": "",
         "x_posts": [],
+        "content_sources": [],
     }
 
     wiki_summary = ""
@@ -510,8 +691,15 @@ def distill_expert(
     # Load X posts (live API or local pre-fetched file)
     persona_data["x_posts"] = _load_x_posts(persona_id, x_handle)
 
-    # Build source text for dimension research (Wikipedia is the main source)
-    source_text = wiki_summary or f"No Wikipedia text available. Use your knowledge about {display_name}."
+    # ── Phase 0: gather all source text ─────────────────────────────────────
+    source_text, content_sources = gather_source_text(
+        name=display_name,
+        wiki_summary=wiki_summary,
+        posts=persona_data["x_posts"],
+        content_urls=content_urls,
+        youtube_video_ids=youtube_video_ids,
+    )
+    persona_data["content_sources"] = content_sources
 
     # ── Phase 1.5: 6-dimension parallel research ─────────────────────────────
     framework: dict = {}

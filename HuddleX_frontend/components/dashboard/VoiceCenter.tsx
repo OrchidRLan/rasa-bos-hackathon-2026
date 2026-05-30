@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Mic, MicOff, Send } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { useTTS } from "@/hooks/useTTS";
 import { useApp } from "@/lib/context";
 import { getExperts, sendMessage, switchPersona } from "@/lib/api";
 import { getAvatarGradient, getInitials } from "@/lib/expertUtils";
@@ -10,6 +11,7 @@ import type { ChatMessage, Expert } from "@/lib/types";
 
 export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => void }) {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const voiceEnabledRef = useRef(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -20,6 +22,7 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { sessionId, activePersona, setActivePersona, pushMessages } = useApp();
+  const { speak, isSpeaking } = useTTS();
 
   // Load expert list once
   useEffect(() => {
@@ -55,6 +58,7 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
   const submit = useCallback(
     async (text: string) => {
       if (!text.trim() || sending) return;
+      const wasVoice = voiceEnabledRef.current;
       setSending(true);
       setInput("");
       pushMessages([{
@@ -76,30 +80,47 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
             content: r.text!,
           }));
         pushMessages(assistantMsgs);
+        if (wasVoice && assistantMsgs.length > 0) {
+          const last = assistantMsgs[assistantMsgs.length - 1];
+          speak(last.content, activePersona?.id ?? undefined);
+        }
       } catch (e) {
         console.error("send failed", e);
       } finally {
         setSending(false);
       }
     },
-    [sessionId, activePersona, pushMessages, sending]
+    [sessionId, activePersona, pushMessages, sending, speak]
   );
 
-  const { transcript, isRecording, isTranscribing, startRecording, stopRecording } =
-    useVoiceInput({ onTranscript: submit, continuous: true });
+  const { transcript, isRecording, isTranscribing, startRecording, stopRecording, cancelRecording } =
+    useVoiceInput({ onTranscript: submit });
+
+  // When TTS starts: cancel mic (discard echo). When TTS ends: resume listening.
+  useEffect(() => {
+    if (!voiceEnabled) return;
+    if (isSpeaking) {
+      cancelRecording();
+    } else if (!isTranscribing && !isRecording) {
+      void startRecording();
+    }
+  }, [isSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleVoice = useCallback(() => {
     if (voiceEnabled) {
-      stopRecording();
+      voiceEnabledRef.current = false;
+      cancelRecording();
       setVoiceEnabled(false);
     } else {
+      voiceEnabledRef.current = true;
       setVoiceEnabled(true);
-      startRecording();
+      void startRecording();
     }
-  }, [voiceEnabled, startRecording, stopRecording]);
+  }, [voiceEnabled, startRecording, cancelRecording]);
 
   const voiceStatus = voiceEnabled
-    ? isTranscribing ? "Transcribing…"
+    ? isSpeaking    ? "Speaking…"
+    : isTranscribing ? "Transcribing…"
     : sending       ? "Sending…"
     : isRecording   ? "Listening…"
     :                 "Starting…"
@@ -205,6 +226,8 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
         <div className="flex items-center gap-2">
           {isTranscribing || sending ? (
             <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
+          ) : isSpeaking ? (
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
           ) : isRecording ? (
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
           ) : (

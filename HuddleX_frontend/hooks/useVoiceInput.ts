@@ -4,131 +4,64 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Options {
   onTranscript?: (text: string) => void;
-  /** When true, automatically restarts listening after each transcription */
-  continuous?: boolean;
+  /** RMS amplitude below which audio is considered silence (0–1). Default 0.01 */
+  silenceThreshold?: number;
+  /** Milliseconds of continuous silence before auto-submitting. Default 3000 */
+  silenceMs?: number;
 }
 
-// WAV Encoder helper functions
-function writeString(view: DataView, offset: number, string: string) {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
+function rms(samples: Float32Array): number {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / samples.length);
 }
 
-function floatTo16BitPCM(output: DataView, offset: number, input: Float32Array) {
-  for (let i = 0; i < input.length; i++, offset += 2) {
-    let s = Math.max(-1, Math.min(1, input[i]));
-    output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-}
-
-function bufferToWav(buffer: Float32Array, sampleRate: number): Blob {
-  const bufferLength = buffer.length;
-  const wavBuffer = new ArrayBuffer(44 + bufferLength * 2);
-  const view = new DataView(wavBuffer);
-
-  /* RIFF identifier */
-  writeString(view, 0, "RIFF");
-  /* file length */
-  view.setUint32(4, 36 + bufferLength * 2, true);
-  /* RIFF type */
-  writeString(view, 8, "WAVE");
-  /* format chunk identifier */
-  writeString(view, 12, "fmt ");
-  /* format chunk length */
-  view.setUint32(16, 16, true);
-  /* sample format (raw PCM) */
-  view.setUint16(20, 1, true);
-  /* channel count (mono) */
-  view.setUint16(22, 1, true);
-  /* sample rate */
-  view.setUint32(24, sampleRate, true);
-  /* byte rate (sample rate * block align) */
-  view.setUint32(28, sampleRate * 2, true);
-  /* block align (channel count * bytes per sample) */
-  view.setUint16(32, 2, true);
-  /* bits per sample */
-  view.setUint16(34, 16, true);
-  /* data chunk identifier */
-  writeString(view, 36, "data");
-  /* data chunk length */
-  view.setUint32(40, bufferLength * 2, true);
-
-  // Write PCM samples
-  floatTo16BitPCM(view, 44, buffer);
-
-  return new Blob([view], { type: "audio/wav" });
-}
-
-export function useVoiceInput({ onTranscript, continuous = false }: Options = {}) {
+export function useVoiceInput({
+  onTranscript,
+  silenceThreshold = 0.01,
+  silenceMs = 3000,
+}: Options = {}) {
   const [transcript, setTranscript] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
 
   const enabledRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const chunksRef = useRef<Float32Array[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);          // ref so cancelRecording can clear it
+  const silenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSoundRef = useRef<number>(Date.now());
+  const recordingStartRef = useRef<number>(Date.now());
 
   const onTranscriptRef = useRef(onTranscript);
-  const startOnceRef = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
 
-  const stopAndProcess = useCallback(async () => {
-    // Stop recording and gather tracks
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
+  const stopSilenceCheck = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearInterval(silenceTimerRef.current);
+      silenceTimerRef.current = null;
     }
-    if (sourceRef.current) {
-      sourceRef.current.disconnect();
-      sourceRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
+  }, []);
 
-    const localContext = audioContextRef.current;
-    const localChunks = chunksRef.current;
-    chunksRef.current = [];
+  const cleanupRefs = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    void audioCtxRef.current?.close();
+    streamRef.current = null;
+    audioCtxRef.current = null;
+    recorderRef.current = null;
+  }, []);
 
-    if (localContext) {
-      void localContext.close();
-      audioContextRef.current = null;
-    }
+  const transcribeBlob = useCallback(async (blob: Blob) => {
+    if (blob.size < 5000) return;
 
-    if (localChunks.length === 0) {
-      if (continuous && enabledRef.current) void startOnceRef.current?.();
-      return;
-    }
-
-    // Merge buffers
-    const totalLength = localChunks.reduce((acc, chunk) => acc + chunk.length, 0);
-    const resultBuffer = new Float32Array(totalLength);
-    let offset = 0;
-    for (const chunk of localChunks) {
-      resultBuffer.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    const sampleRate = localContext?.sampleRate || 44100;
-    const blob = bufferToWav(resultBuffer, sampleRate);
-
-    // Audio is too short (less than 5KB, roughly 0.15s of 16kHz audio or similar, WAV headers are 44 bytes)
-    if (blob.size < 5000) {
-      if (continuous && enabledRef.current) void startOnceRef.current?.();
-      return;
-    }
-
+    setIsRecording(false);
     setIsTranscribing(true);
     setTranscript("Transcribing…");
 
     try {
       const form = new FormData();
-      form.append("file", blob, "recording.wav");
+      form.append("file", blob, "recording.webm");
       const res = await fetch("/api/transcribe", { method: "POST", body: form });
       if (!res.ok) throw new Error(await res.text());
       const { transcript: text } = await res.json();
@@ -140,63 +73,106 @@ export function useVoiceInput({ onTranscript, continuous = false }: Options = {}
       setTranscript("Transcription failed");
     } finally {
       setIsTranscribing(false);
-      if (continuous && enabledRef.current) void startOnceRef.current?.();
     }
-  }, [continuous]);
+    // No auto-restart — parent drives the restart after TTS finishes
+  }, []);
 
-  const startOnce = useCallback(async () => {
-    if (!enabledRef.current) return;
+  const startRecording = useCallback(async () => {
+    if (enabledRef.current) return; // already running
+    enabledRef.current = true;
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioContext = new AudioContextClass();
-      audioContextRef.current = audioContext;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioCtxRef.current = audioCtx;
 
-      const source = audioContext.createMediaStreamSource(stream);
-      sourceRef.current = source;
-
-      // 4096 buffer size, 1 input channel, 1 output channel
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
 
       chunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
 
-      processor.onaudioprocess = (e) => {
-        if (!enabledRef.current) return;
-        const channelData = e.inputBuffer.getChannelData(0);
-        chunksRef.current.push(new Float32Array(channelData));
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        cleanupRefs();
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        chunksRef.current = [];
+        if (enabledRef.current) {
+          // Normal VAD-triggered stop: transcribe
+          enabledRef.current = false;
+          void transcribeBlob(blob);
+        }
+        // If enabledRef is already false (cancel), skip transcription
       };
 
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-
+      recorder.start();
+      lastSoundRef.current = Date.now();
+      recordingStartRef.current = Date.now();
       setIsRecording(true);
       setTranscript("");
+
+      const dataArray = new Float32Array(analyser.fftSize);
+      silenceTimerRef.current = setInterval(() => {
+        if (!enabledRef.current || recorder.state !== "recording") {
+          stopSilenceCheck();
+          return;
+        }
+        analyser.getFloatTimeDomainData(dataArray);
+        const level = rms(dataArray);
+        if (level > silenceThreshold) {
+          lastSoundRef.current = Date.now();
+        } else {
+          const age = Date.now() - recordingStartRef.current;
+          if (age > 1000 && Date.now() - lastSoundRef.current > silenceMs) {
+            stopSilenceCheck();
+            recorder.stop(); // onstop will transcribe (enabledRef still true at this point)
+          }
+        }
+      }, 100);
+
     } catch (err) {
       console.error("Microphone access denied", err);
       setTranscript("Microphone access denied");
       enabledRef.current = false;
       setIsRecording(false);
     }
-  }, []);
+  }, [silenceThreshold, silenceMs, stopSilenceCheck, cleanupRefs, transcribeBlob]);
 
-  useEffect(() => {
-    startOnceRef.current = startOnce;
-  }, [startOnce]);
-
-  const startRecording = useCallback(async () => {
-    enabledRef.current = true;
-    await startOnce();
-  }, [startOnce]);
-
+  /** Stop and transcribe whatever was recorded (manual stop). */
   const stopRecording = useCallback(() => {
-    enabledRef.current = false;
+    if (!enabledRef.current && recorderRef.current?.state === "inactive") return;
+    stopSilenceCheck();
     setIsRecording(false);
     setTranscript("");
-    void stopAndProcess();
-  }, [stopAndProcess]);
+    if (recorderRef.current?.state !== "inactive") {
+      recorderRef.current?.stop(); // onstop → transcribe (enabledRef still true)
+    } else {
+      enabledRef.current = false;
+      cleanupRefs();
+    }
+  }, [stopSilenceCheck, cleanupRefs]);
 
-  return { transcript, isRecording, isTranscribing, startRecording, stopRecording };
+  /** Cancel recording and DISCARD audio — used when TTS starts playing. */
+  const cancelRecording = useCallback(() => {
+    stopSilenceCheck();
+    enabledRef.current = false; // onstop will skip transcription
+    chunksRef.current = [];     // discard accumulated audio
+    setIsRecording(false);
+    setTranscript("");
+    if (recorderRef.current?.state !== "inactive") {
+      recorderRef.current?.stop();
+    } else {
+      cleanupRefs();
+    }
+  }, [stopSilenceCheck, cleanupRefs]);
+
+  return { transcript, isRecording, isTranscribing, startRecording, stopRecording, cancelRecording };
 }

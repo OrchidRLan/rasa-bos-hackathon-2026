@@ -1,28 +1,10 @@
 flows:
   pattern_chitchat:
     description: >
-      Default handler for any free-form question, message, or statement directed
-      at the currently active expert persona. Overrides Rasa's built-in chitchat
-      pattern: instead of a generic fallback, the action retrieves relevant
-      knowledge from the expert's vector store (RAG) and replies in their voice.
-    steps:
-      - action: action_persona_chat
-
-  pattern_cannot_handle:
-    description: >
-      Catch-all for messages the command generator can't map to a flow. In a
-      persona-chat app every message should be answered by the active expert, so
-      instead of "I can't help with that" we route here to the same RAG action.
-      It either answers grounded in the expert's posts or gives an honest
-      in-character refusal (L4) — never a generic dead-end.
-    steps:
-      - action: action_persona_chat
-
-  pattern_search:
-    description: >
-      The command generator routes knowledge/lookup-style questions here
-      (Rasa's Enterprise Search). We have no separate knowledge base — the
-      expert's vector store IS the knowledge — so redirect to the same RAG
-      action instead of the default "I can't access that information" dead-end.
+      Single entry point for ALL user messages: chitchat, corrections, searches,
+      and anything the command generator cannot map to another flow. Every message
+      is answered by the active expert persona via RAG + cognitive framework.
+      We consolidate all patterns here to prevent multi-command dispatch from
+      triggering action_persona_chat more than once per turn.
     steps:
       - action: action_persona_chat

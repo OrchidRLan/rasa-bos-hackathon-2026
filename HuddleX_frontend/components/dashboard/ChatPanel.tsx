@@ -7,6 +7,7 @@ import {
   Paperclip, X, FileText, Brain, Users, UserCircle,
 } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { useTTS } from "@/hooks/useTTS";
 import { useApp } from "@/lib/context";
 import { getExperts, sendMessage, switchPersona, uploadFile } from "@/lib/api";
 import { getAvatarGradient, getInitials } from "@/lib/expertUtils";
@@ -16,6 +17,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const voiceEnabledRef = useRef(false);
   const [threadsOpen, setThreadsOpen] = useState(true);
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -36,6 +38,8 @@ export default function ChatPanel() {
     latestMessages, pushMessages,
     threads, activeThreadId, createThread, switchThread, deleteThread, renameThread,
   } = useApp();
+
+  const { speak, isSpeaking } = useTTS();
 
   useEffect(() => {
     getExperts().then(setExperts).catch(console.error);
@@ -81,6 +85,7 @@ export default function ChatPanel() {
   const submit = useCallback(
     async (text: string) => {
       if ((!text.trim() && !attachedFile) || sending) return;
+      const wasVoice = voiceEnabledRef.current;
       setSending(true);
       setInput("");
       const file = attachedFile;
@@ -111,7 +116,7 @@ export default function ChatPanel() {
       }]);
       try {
         const replies = await sendMessage(sessionId, messageText, activePersona?.id, fileIds.length > 0 ? fileIds : undefined);
-        const msgs: ChatMessage[] = replies
+        const rawMsgs: ChatMessage[] = replies
           .filter((r) => r.text)
           .map((r, i) => {
             const ctx = r.custom?.context as Record<string, unknown> | undefined;
@@ -127,28 +132,65 @@ export default function ChatPanel() {
               id: `reply_${Date.now()}_${i}`,
               timestamp: new Date().toISOString(),
               persona_id: activePersona?.id ?? null,
-              role: "assistant",
+              role: "assistant" as const,
               content: r.text!,
               context_meta,
             };
           });
+
+        // Merge consecutive same-persona messages into one bubble.
+        // Rasa CALM can dispatch multiple pattern flows per turn, each calling
+        // action_persona_chat once — we consolidate them here as a safety net.
+        const msgs = rawMsgs.reduce<ChatMessage[]>((acc, msg) => {
+          const last = acc[acc.length - 1];
+          if (last?.role === "assistant" && last.persona_id === msg.persona_id) {
+            return [...acc.slice(0, -1), {
+              ...last,
+              content: last.content + "\n\n" + msg.content,
+              context_meta: msg.context_meta ?? last.context_meta,
+            }];
+          }
+          return [...acc, msg];
+        }, []);
+
         pushMessages(msgs);
+        if (voiceEnabledRef.current && msgs.length > 0) {
+          const last = msgs[msgs.length - 1];
+          if (last.role === "assistant") speak(last.content, activePersona?.id ?? undefined);
+        }
       } catch (e) {
         console.error("send failed", e);
       } finally {
         setSending(false);
       }
     },
-    [sessionId, activePersona, pushMessages, sending, attachedFile]
+    [sessionId, activePersona, pushMessages, sending, attachedFile, speak]
   );
 
-  const { transcript, isTranscribing, startRecording, stopRecording } =
-    useVoiceInput({ onTranscript: submit, continuous: true });
+  const { transcript, isTranscribing, isRecording, startRecording, stopRecording, cancelRecording } =
+    useVoiceInput({ onTranscript: submit });
+
+  // When TTS starts: cancel mic (discard echo). When TTS ends: resume listening.
+  useEffect(() => {
+    if (!voiceEnabled) return;
+    if (isSpeaking) {
+      cancelRecording();
+    } else if (!isTranscribing && !isRecording) {
+      void startRecording();
+    }
+  }, [isSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleVoice = useCallback(() => {
-    if (voiceEnabled) { stopRecording(); setVoiceEnabled(false); }
-    else { setVoiceEnabled(true); startRecording(); }
-  }, [voiceEnabled, startRecording, stopRecording]);
+    if (voiceEnabled) {
+      voiceEnabledRef.current = false;
+      cancelRecording();
+      setVoiceEnabled(false);
+    } else {
+      voiceEnabledRef.current = true;
+      setVoiceEnabled(true);
+      void startRecording();
+    }
+  }, [voiceEnabled, startRecording, cancelRecording]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
@@ -217,14 +259,16 @@ export default function ChatPanel() {
 
         {/* Voice status badge */}
         {voiceEnabled && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100 shrink-0">
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border shrink-0 ${
+            isSpeaking ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100"
+          }`}>
             {isTranscribing || sending ? (
               <Loader2 className="w-3 h-3 text-red-400 animate-spin" />
             ) : (
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span className={`w-2 h-2 rounded-full animate-pulse ${isSpeaking ? "bg-emerald-500" : "bg-red-500"}`} />
             )}
-            <span className="text-xs text-red-500 font-medium">
-              {isTranscribing ? "Transcribing" : sending ? "Sending" : "Listening"}
+            <span className={`text-xs font-medium ${isSpeaking ? "text-emerald-600" : "text-red-500"}`}>
+              {isSpeaking ? "Speaking" : isTranscribing ? "Transcribing" : sending ? "Sending" : "Listening"}
             </span>
           </div>
         )}

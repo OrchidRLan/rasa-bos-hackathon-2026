@@ -35,7 +35,7 @@ from actions.services.file_service import (
     save_upload,
 )
 from actions.services.email_client import SMTPEmailClient, EmailClientError
-from actions.persona_store import list_personas_for_api, load_persona_data
+from actions.persona_store import list_personas_for_api, load_persona_data, get_persona_config
 from actions.distillation import distill_expert, make_persona_id
 from actions.store import load_thread, load_user, save_user, list_threads
 
@@ -327,6 +327,52 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
             return {"transcript": transcript_res.text.strip()}
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Text-to-speech (ElevenLabs) ───────────────────────────────────────────────
+
+class SynthesizeRequest(BaseModel):
+    text: str
+    persona_id: str | None = None
+
+
+@app.post("/api/synthesize")
+async def synthesize_speech(req: SynthesizeRequest):
+    """VoiceCenter: convert assistant reply to speech via ElevenLabs."""
+    import httpx
+    from fastapi.responses import Response
+
+    api_key = os.getenv("ELEVENLABS_API_KEY", "")
+    model_id = os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5")
+    default_voice_id = os.getenv("ELEVENLABS_DEFAULT_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
+
+    # Use per-persona voice if configured, otherwise fall back to default
+    voice_id = default_voice_id
+    if req.persona_id:
+        cfg = get_persona_config(req.persona_id)
+        persona_voice = cfg.get("elevenlabs_voice_id", "") if cfg else ""
+        if persona_voice:
+            voice_id = persona_voice
+
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ELEVENLABS_API_KEY not configured")
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Empty text")
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+                json={"text": req.text, "model_id": model_id},
+            )
+            if not res.is_success:
+                raise HTTPException(status_code=502, detail=f"ElevenLabs error: {res.text}")
+            return Response(content=res.content, media_type="audio/mpeg")
     except HTTPException:
         raise
     except Exception as e:

@@ -15,34 +15,54 @@
 
 ---
 
-## 快速启动 <!-- AUTO -->
+## Setup — run it yourself
+
+> Cloning the repo is **not enough on its own**: API keys, the seeded Chroma
+> knowledge base, and the trained model are per-machine (gitignored) and must be
+> generated locally. See "What a clone does NOT include" below.
+
+### 1. Backend (`HuddleX_backend/`)
 
 ```bash
-cd starter
-cp .env .env.bak              # 备份（如已有）
-# 填入 RASA_PRO_LICENSE / NEBIUS_API_KEY / SPEECHMATICS_API_KEY / RIME_API_KEY
+cd HuddleX_backend
+cp .env.example .env          # then fill in your own keys:
+                              # RASA_PRO_LICENSE / NEBIUS_API_KEY / SPEECHMATICS_API_KEY / RIME_API_KEY
+make install                  # uv venv (Python 3.11) + all deps
+make verify                   # pre-flight: keys, deps, files, seeded data
 
-# 1. 安装依赖
-make install                  # Python 3.10/3.11 + rasa-pro + voice 依赖（uv）
-make install-frontend         # React 前端依赖（npm, 待创建）
+# Build the per-persona knowledge base into Chroma:
+make seed-personas            # fetches LIVE X posts + Wikipedia, embeds into .data/chroma_db/
+#   ⚠️ This pulls each persona's CURRENT tweets at run time. X content changes
+#      over time and depends on your X API access, so the knowledge base — and
+#      therefore the answers — will be SIMILAR but NOT IDENTICAL between machines
+#      or runs. Briefings are also LLM-generated (non-deterministic).
 
-# 2. 预检
-make verify                   # 检查 key、依赖、服务连通性
+make train                    # compile the Rasa CALM model (flows + command generator)
 
-# 3. 初始化人格知识库
-make seed-personas            # 读取 data/personas/*.json → Chroma embedding（待添加）
-
-# 4. 训练 Rasa 模型
-make train
-
-# 5. 启动（4 个终端）
-make run-actions              # tab 1  Action Server + Always-On Worker
-make run-rasa                 # tab 2  Rasa CALM (:5005)
-make run-frontend             # tab 3  React 前端 localhost:3000（待添加）
-make demo                     # tab 4  语音 Demo（可选）
+# Run the three backend servers (separate terminals):
+make run-actions              # :5055  custom actions + always-on worker
+make run-api                  # :8080  FastAPI REST (experts, threads, user)
+make run-rasa                 # :5005  Rasa CALM chat webhook
 ```
 
-文字模式（无需语音）：`make demo-text`
+### 2. Frontend (`HuddleX_frontend/`)
+
+```bash
+cd HuddleX_frontend
+npm install
+npm run dev                   # :3000  — open http://localhost:3000
+```
+
+Text-only chat (no voice) is the default in the UI; `make demo-text` gives a CLI chat.
+
+### What a clone does NOT include (gitignored — regenerate locally)
+
+| Item | Path | How to get it |
+|------|------|---------------|
+| API keys | `HuddleX_backend/.env` | your own keys (Rasa/Nebius/Speechmatics/Rime) |
+| Seeded knowledge | `HuddleX_backend/.data/chroma_db/` | `make seed-personas` (re-fetches live X → not identical) |
+| Trained model | `HuddleX_backend/models/` | `make train` |
+| Node modules | `HuddleX_frontend/node_modules/` | `npm install` |
 
 ---
 

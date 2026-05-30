@@ -50,7 +50,7 @@ run-actions:
 .PHONY: run-api
 # Frontend calls: GET /api/experts, GET /api/user, GET/POST /api/threads
 run-api:
-	$(PYTHON) -m uvicorn actions.api_server:app --host 0.0.0.0 --port 8080 --reload
+	$(PYTHON) -m uvicorn actions.api_server:app --host 0.0.0.0 --port 8080 --reload --reload-dir actions
 
 .PHONY: run-rasa
 # Frontend calls: POST /webhooks/rest/webhook  (chat + persona switching)

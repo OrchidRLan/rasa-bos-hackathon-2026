@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Allow frontend lib directory
+!HuddleX_frontend/lib/
+!HuddleX_frontend/lib/**

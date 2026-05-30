@@ -159,9 +159,57 @@ def seed_one(cfg: dict, model: SentenceTransformer) -> None:
     logger.info("  Saved → %s", out)
 
 
+def seed_one_no_embed(cfg: dict) -> None:
+    """Seed a persona with Wikipedia only — no embedding model required."""
+    pid = cfg["id"]
+    logger.info("Seeding %s (no-embed mode)...", cfg["display_name"])
+
+    persona_data: dict = {
+        "id": pid,
+        "display_name": cfg["display_name"],
+        "handle": cfg["x_handle"],
+        "description": "",
+        "wikipedia_url": cfg["wikipedia_url"],
+        "rime_voice_id": cfg.get("rime_voice_id", ""),
+        "avatar_path": f"public/avatars/{pid}.jpg",
+        "personality_traits": [],
+        "speaking_style": "",
+        "x_posts": [],
+    }
+
+    logger.info("  Fetching Wikipedia: %s", cfg["wikipedia_url"])
+    try:
+        persona_data["wikipedia"] = fetch_wikipedia(cfg["wikipedia_url"])
+        logger.info("  Wikipedia OK (%d chars)", len(persona_data["wikipedia"]["summary"]))
+    except Exception as e:
+        logger.warning("  Wikipedia fetch failed: %s", e)
+        persona_data["wikipedia"] = {"summary": "", "key_facts": [], "last_fetched": _utc_now()}
+
+    nebius_key = os.getenv("NEBIUS_API_KEY", "")
+    if nebius_key:
+        from actions.worker.briefing_generator import generate_briefing
+        briefing_text = generate_briefing(persona_data)
+        logger.info("  Briefing generated (%d chars)", len(briefing_text))
+    else:
+        briefing_text = f"Knowledge base seeded for {cfg['display_name']}."
+
+    persona_data["briefing"] = {
+        "text": briefing_text,
+        "generated_at": _utc_now(),
+        "source_post_count": 0,
+    }
+
+    PERSONAS_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    out = PERSONAS_DATA_DIR / f"{pid}.json"
+    out.write_text(json.dumps(persona_data, ensure_ascii=False, indent=2))
+    logger.info("  Saved → %s", out)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--persona", help="Seed a single persona id (default: all)")
+    parser.add_argument("--skip-embed", action="store_true",
+                        help="Skip embedding model — Wikipedia only, no Chroma RAG")
     args = parser.parse_args()
 
     configs = yaml.safe_load(PERSONA_CONFIG.read_text()).get("personas", [])
@@ -171,11 +219,15 @@ def main() -> None:
             logger.error("Persona '%s' not found in config.yml", args.persona)
             sys.exit(1)
 
-    logger.info("Loading embedding model %s...", EMBED_MODEL_NAME)
-    model = SentenceTransformer(EMBED_MODEL_NAME)
-
-    for cfg in configs:
-        seed_one(cfg, model)
+    if args.skip_embed:
+        logger.info("Skip-embed mode: skipping embedding model download.")
+        for cfg in configs:
+            seed_one_no_embed(cfg)
+    else:
+        logger.info("Loading embedding model %s...", EMBED_MODEL_NAME)
+        model = SentenceTransformer(EMBED_MODEL_NAME)
+        for cfg in configs:
+            seed_one(cfg, model)
 
     logger.info("Done. %d persona(s) seeded.", len(configs))
 

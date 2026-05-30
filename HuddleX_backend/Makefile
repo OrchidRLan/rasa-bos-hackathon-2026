@@ -31,8 +31,8 @@ help:
 
 .PHONY: install
 install:
-	$(UV) venv $(VENV)
-	$(UV) pip install pip setuptools
+	$(UV) venv --allow-existing $(VENV)
+	$(UV) pip install pip setuptools wheel packaging
 	$(UV) pip install -e ".[voice]"
 
 .PHONY: seed-personas

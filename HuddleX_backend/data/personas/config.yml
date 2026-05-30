@@ -47,3 +47,11 @@ personas:
   rime_voice_id: ''
   avatar_color: from-rose-600 to-pink-900
   initials: DJ
+- id: taylor_swift
+  display_name: Taylor Swift
+  x_handle: Taylor Swift
+  x_posts_file: data/personas/raw/taylor_swift_tweets.json
+  wikipedia_url: https://en.wikipedia.org/wiki/Taylor_Swift
+  rime_voice_id: ''
+  avatar_color: from-cyan-600 to-sky-900
+  initials: TS

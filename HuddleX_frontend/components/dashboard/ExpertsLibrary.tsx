@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	Plus,
 	Pencil,
@@ -12,15 +12,15 @@ import {
 	Clock,
 	Code2,
 	Loader2,
-	UserPlus,
 	RotateCcw,
 	ChevronDown,
 	ChevronsUpDown,
 	Search,
 } from "lucide-react";
 import GlowCard from "@/components/ui/GlowCard";
+import AddExpertModal from "@/components/dashboard/AddExpertModal";
 import { getExperts, switchPersona } from "@/lib/api";
-import { getAvatarGradient, getInitials, makeInitials } from "@/lib/expertUtils";
+import { getAvatarGradient, getInitials } from "@/lib/expertUtils";
 import { useApp } from "@/lib/context";
 import type { Expert } from "@/lib/types";
 
@@ -41,14 +41,6 @@ function hideExpert(id: string) {
 	localStorage.setItem(HIDDEN_KEY, JSON.stringify([...s]));
 }
 
-const AVATAR_COLORS = [
-	"from-violet-500 to-purple-700",
-	"from-rose-500 to-pink-700",
-	"from-amber-500 to-orange-600",
-	"from-teal-500 to-cyan-700",
-	"from-green-500 to-emerald-700",
-	"from-sky-500 to-blue-700",
-];
 
 function loadCustomExperts(): Expert[] {
 	try {
@@ -62,147 +54,6 @@ function saveCustomExperts(list: Expert[]) {
 	localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
 }
 
-
-/* ── Add-Expert Modal ──────────────────────────────────────────────────────── */
-interface AddModalProps {
-	onClose: () => void;
-	onAdd: (expert: Expert) => void;
-}
-
-function AddExpertModal({ onClose, onAdd }: AddModalProps) {
-	const [name, setName] = useState("");
-	const [handle, setHandle] = useState("");
-	const [wiki, setWiki] = useState("");
-	const [subtitle, setSubtitle] = useState("");
-	const backdropRef = useRef<HTMLDivElement>(null);
-
-	function handleSubmit(e: React.FormEvent) {
-		e.preventDefault();
-		if (!name.trim()) return;
-		const id = `custom_${Date.now()}`;
-		const color =
-			AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-		const expert: Expert = {
-			id,
-			display_name: name.trim(),
-			subtitle: subtitle.trim(),
-			initials: makeInitials(name.trim()),
-			avatar_color: color,
-			x_handle: handle.trim(),
-			x_source: handle.trim(),
-			wikipedia: wiki.trim(),
-			last_updated: new Date().toISOString().slice(0, 10),
-		};
-		onAdd(expert);
-		onClose();
-	}
-
-	return (
-		<div
-			ref={backdropRef}
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
-			onMouseDown={(e) => {
-				if (e.target === backdropRef.current) onClose();
-			}}
-		>
-			<div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-150">
-				<div className="flex items-center justify-between mb-5">
-					<div className="flex items-center gap-2">
-						<div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center">
-							<UserPlus className="w-4 h-4 text-white" />
-						</div>
-						<h2 className="text-base font-semibold text-slate-900">
-							Add New Expert
-						</h2>
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50"
-					>
-						<X className="w-4 h-4" />
-					</button>
-				</div>
-
-				<form onSubmit={handleSubmit} className="space-y-4">
-					<div>
-						<label className="block text-xs font-medium text-slate-500 mb-1">
-							Name <span className="text-red-400">*</span>
-						</label>
-						<input
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder="e.g. Sam Altman"
-							required
-							className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
-						/>
-					</div>
-
-					<div>
-						<label className="block text-xs font-medium text-slate-500 mb-1">
-							Role / Subtitle
-						</label>
-						<input
-							value={subtitle}
-							onChange={(e) => setSubtitle(e.target.value)}
-							placeholder="e.g. CEO of OpenAI"
-							className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
-						/>
-					</div>
-
-					<div>
-						<label className="block text-xs font-medium text-slate-500 mb-1">
-							X / Twitter handle
-						</label>
-						<div className="relative">
-							<span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
-								@
-							</span>
-							<input
-								value={handle.replace(/^@/, "")}
-								onChange={(e) =>
-									setHandle(e.target.value.replace(/^@/, ""))
-								}
-								placeholder="username"
-								className="w-full pl-7 pr-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
-							/>
-						</div>
-					</div>
-
-					<div>
-						<label className="block text-xs font-medium text-slate-500 mb-1">
-							Wikipedia URL
-						</label>
-						<input
-							value={wiki}
-							onChange={(e) => setWiki(e.target.value)}
-							placeholder="https://en.wikipedia.org/wiki/…"
-							type="url"
-							className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-300"
-						/>
-					</div>
-
-					<div className="flex gap-2 pt-1">
-						<button
-							type="button"
-							onClick={onClose}
-							className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50"
-						>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							disabled={!name.trim()}
-							className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40"
-						>
-							Add Expert
-						</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	);
-}
 
 function loadOverrides(): Record<string, Partial<Expert>> {
 	try {
@@ -330,12 +181,6 @@ export default function ExpertsLibrary({
 		}
 	}
 
-	function handleAddExpert(expert: Expert) {
-		const custom = loadCustomExperts();
-		saveCustomExperts([...custom, expert]);
-		setExperts((prev) => [...prev, expert]);
-	}
-
 	function restoreExpert(expertId: string) {
 		const s = loadHidden();
 		s.delete(expertId);
@@ -362,7 +207,10 @@ export default function ExpertsLibrary({
 			{showModal && (
 				<AddExpertModal
 					onClose={() => setShowModal(false)}
-					onAdd={handleAddExpert}
+					onAdded={(expert) => {
+						handleExpertAdded(expert);
+						setShowModal(false);
+					}}
 				/>
 			)}
 			<section className="flex flex-col h-full min-h-0">
@@ -656,13 +504,6 @@ export default function ExpertsLibrary({
 					);
 				})()}
 
-				{/*
-				{showAddModal && (
-					<AddExpertModal
-						onClose={() => setShowAddModal(false)}
-						onAdded={handleExpertAdded}
-					/>
-				)} */}
 			</section>
 		</>
 	);

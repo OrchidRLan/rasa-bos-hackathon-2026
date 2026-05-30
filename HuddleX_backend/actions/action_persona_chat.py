@@ -299,6 +299,26 @@ error: {e}
     return "\n\n".join(sections).strip()
 
 
+def _extract_team_insights(thread: dict, current_persona_id: str) -> tuple[str, int]:
+    """Return (formatted text, count) of messages from OTHER experts in this thread."""
+    history = thread.get("thread_history", [])
+    other_msgs = [
+        m for m in history
+        if m["role"] == "assistant"
+        and m.get("persona_id")
+        and m["persona_id"] != current_persona_id
+    ]
+    if not other_msgs:
+        return "", 0
+    lines = []
+    for m in other_msgs[-6:]:
+        snippet = m["content"][:250].rstrip()
+        if len(m["content"]) > 250:
+            snippet += "…"
+        lines.append(f"[{m['persona_id']}]: {snippet}")
+    return "\n".join(lines), len(other_msgs)
+
+
 def _build_prompt(persona_data: dict, user: dict, thread: dict,
                   chunks: list[str], user_message: str, uploaded_file_context: str = "") -> str:
     ctx = user.get("user_context", {})

@@ -338,33 +338,49 @@ export default function AddExpertModal({
 
           {/* ── Step 3: Done ───────────────────────────────────────────────── */}
           {step === "done" && result && (
-            <div className="space-y-5">
-              {/* Success banner */}
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                <p className="text-sm text-emerald-700 font-medium">
-                  Expert distillation complete!
-                </p>
-              </div>
-
-              {/* New expert card preview */}
+            <div className="space-y-4">
+              {/* Expert card */}
               <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-sm space-y-3">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-12 h-12 rounded-full bg-gradient-to-br ${result.avatar_color} flex items-center justify-center text-white text-sm font-semibold`}
+                    className={`w-12 h-12 rounded-full bg-gradient-to-br ${result.avatar_color} flex items-center justify-center text-white text-sm font-semibold shrink-0`}
                   >
                     {result.initials}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="font-semibold text-slate-900">{result.display_name}</h3>
-                    <p className="text-sm text-slate-500">{result.x_handle || result.x_source}</p>
+                    {result.subtitle && (
+                      <p className="text-xs text-slate-500 truncate">{result.subtitle}</p>
+                    )}
+                    {(result.x_handle || result.x_source) && (
+                      <p className="text-xs text-slate-400 truncate">{result.x_handle || result.x_source}</p>
+                    )}
                   </div>
                 </div>
                 {result.briefing && (
-                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-3">
+                  <p className="text-xs text-slate-600 leading-relaxed">
                     {result.briefing}
                   </p>
                 )}
+              </div>
+
+              {/* Distillation process summary */}
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-2">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Distillation Process
+                </p>
+                {phases.map((phase) => (
+                  <div key={phase.label} className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="text-xs text-slate-600">{phase.label.replace(/…$/, "")}</span>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2.5 pt-1 border-t border-slate-200 mt-2">
+                  <CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span className="text-xs text-blue-700 font-medium">
+                    Knowledge embedded into vector database — ready to chat
+                  </span>
+                </div>
               </div>
 
               <div className="flex gap-3">

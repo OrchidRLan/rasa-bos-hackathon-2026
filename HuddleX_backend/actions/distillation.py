@@ -11,6 +11,7 @@ Pipeline (mirrors nuwa SKILL.md phases):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -363,6 +364,69 @@ def _framework_to_text(framework: dict, name: str) -> str:
     return "\n".join(parts)
 
 
+# ── X posts loading ─────────────────────────────────────────────────────────
+
+def _load_x_posts(persona_id: str, x_handle: str) -> list[dict]:
+    """Load X posts for a persona.
+
+    Priority:
+      1. Live X API if X_API_MODE=live and x_handle is set.
+      2. Local pre-fetched JSON at data/personas/raw/{persona_id}_tweets.json.
+      3. Empty list (graceful fallback).
+    """
+    mode = os.getenv("X_API_MODE", "mock").lower()
+    max_results = int(os.getenv("X_POSTS_MAX_RESULTS", "30"))
+    handle = x_handle.lstrip("@") if x_handle else ""
+
+    if mode == "live" and handle:
+        try:
+            from actions.services.x_client import XClient
+
+            async def _fetch() -> list[dict]:
+                client = XClient()
+                bundle = await client.fetch_creator_posts_by_handle(
+                    handle=handle, max_results=max_results
+                )
+                username = bundle["profile"]["username"]
+                posts = []
+                for post in bundle.get("posts", []):
+                    metrics = post.get("public_metrics", {}) or {}
+                    post_id = post.get("id")
+                    posts.append({
+                        "id": post_id,
+                        "text": post.get("text", ""),
+                        "created_at": post.get("created_at"),
+                        "lang": post.get("lang"),
+                        "url": f"https://x.com/{username}/status/{post_id}" if post_id else None,
+                        "metrics": {
+                            "like_count": metrics.get("like_count", 0),
+                            "reply_count": metrics.get("reply_count", 0),
+                            "retweet_count": metrics.get("retweet_count", 0),
+                            "quote_count": metrics.get("quote_count", 0),
+                        },
+                        "source": "x_api_v2",
+                    })
+                return posts
+
+            posts = asyncio.run(_fetch())
+            print(f"[distill] Fetched {len(posts)} live X posts for @{handle}")
+            return posts
+        except Exception as e:
+            print(f"[distill] Live X fetch failed for @{handle}: {e} — trying local file")
+
+    local_path = Path(f"data/personas/raw/{persona_id}_tweets.json")
+    if local_path.exists():
+        try:
+            posts = json.loads(local_path.read_text())
+            print(f"[distill] Loaded {len(posts)} X posts from {local_path}")
+            return posts
+        except Exception as e:
+            print(f"[distill] Failed to load {local_path}: {e}")
+
+    print(f"[distill] No X posts available for {persona_id}")
+    return []
+
+
 # ── Briefing generation ─────────────────────────────────────────────────────
 
 def _generate_briefing(persona_data: dict) -> str:
@@ -442,6 +506,9 @@ def distill_expert(
             persona_data["wikipedia"] = {"summary": "", "key_facts": [], "last_fetched": _utc_now()}
     else:
         persona_data["wikipedia"] = {"summary": "", "key_facts": [], "last_fetched": _utc_now()}
+
+    # Load X posts (live API or local pre-fetched file)
+    persona_data["x_posts"] = _load_x_posts(persona_id, x_handle)
 
     # Build source text for dimension research (Wikipedia is the main source)
     source_text = wiki_summary or f"No Wikipedia text available. Use your knowledge about {display_name}."

@@ -21,12 +21,20 @@ export interface Expert {
 
 export type ChatRole = "user" | "assistant" | "system_event";
 
+export interface ContextMeta {
+  own_chunks: number;
+  other_expert_msgs: number;
+  user_profile: boolean;
+  grounded: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   timestamp: string;
   persona_id: string | null;
   role: ChatRole;
   content: string;
+  context_meta?: ContextMeta;
 }
 
 export interface Thread {

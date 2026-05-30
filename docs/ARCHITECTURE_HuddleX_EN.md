@@ -2,7 +2,7 @@
 
 ---
 
-## 系统总览
+## System Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
@@ -10,7 +10,7 @@
 │                                                                                  │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌───────────┐  ┌────────────────┐  │
 │  │  ExpertsLibrary  │  │   ChatPanel      │  │UserInfo   │  │TasksPanel      │  │
-│  │  + AddExpert     │  │ (主聊天界面)      │  │Panel      │  │+ ChatPreview   │  │
+│  │  + AddExpert     │  │ (main chat UI)   │  │Panel      │  │+ ChatPreview   │  │
 │  │  Modal           │  │ ┌─────────────┐  │  │           │  │                │  │
 │  │                  │  │ │VoiceCenter  │  │  │           │  │                │  │
 │  │                  │  │ │(side panel) │  │  │           │  │                │  │
@@ -44,7 +44,7 @@
 │  POST /api/notif../   │      │    persona_{id}/                              │  │
 │       email/send      │      │    → tweets + wiki + framework                │  │
 │  GET  /worker/health  │      │                                               │  │
-│  POST /worker/trigger │      │  Nebius LLM (OpenAI-compat)                  │  │
+│  POST /worker/trigger │      │  Nebius LLM (OpenAI-compatible)              │  │
 └───────────┬───────────┘      │    Qwen3-235B-A22B-Instruct-2507              │  │
             │                  │    (RAG chat + distillation ×7)              │  │
             │  persona_store   │                                               │  │
@@ -75,136 +75,141 @@
 
 ---
 
-## 组件详解
+## Component Details
 
 ### 1. Frontend (Next.js 15 + React 18 + TypeScript + Tailwind CSS)
 
-| 组件 | 文件 | 职责 |
+| Component | File | Responsibility |
 |------|------|------|
-| `ExpertsLibrary` | `components/dashboard/ExpertsLibrary.tsx` | 专家卡片列表，"+" 按钮触发蒸馏 |
-| `AddExpertModal` | `components/dashboard/AddExpertModal.tsx` | 女娲蒸馏向导（3步：输入 → 进行中 → 完成） |
-| `ChatPanel` | `components/dashboard/ChatPanel.tsx` | **主聊天界面**：含线程侧边栏、文件上传、语音模式、context meta 标注 |
-| `VoiceCenter` | `components/dashboard/VoiceCenter.tsx` | 侧面板：专家切换下拉 + 语音模式开关 |
-| `VoiceOrb` | `components/dashboard/VoiceOrb.tsx` | 语音状态可视化球体 |
-| `UserInfoPanel` | `components/dashboard/UserInfoPanel.tsx` | 用户画像展示与编辑 |
-| `TasksPanel` | `components/dashboard/TasksPanel.tsx` | 所有对话线程列表 |
-| `ChatPreview` | `components/dashboard/ChatPreview.tsx` | 最近消息预览（最近 40 条） |
-| `GlowCard` | `components/ui/GlowCard.tsx` | 发光卡片 UI 基础组件 |
-| `SectionTitle` | `components/ui/SectionTitle.tsx` | 区块标题组件 |
-| `StatusPill` | `components/ui/StatusPill.tsx` | 状态标签组件 |
+| `ExpertsLibrary` | `components/dashboard/ExpertsLibrary.tsx` | Expert card list; the `+` button triggers distillation |
+| `AddExpertModal` | `components/dashboard/AddExpertModal.tsx` | Nüwa distillation wizard: 3 steps, input → in progress → completed |
+| `ChatPanel` | `components/dashboard/ChatPanel.tsx` | **Main chat interface**: thread sidebar, file upload, voice mode, and context metadata labels |
+| `VoiceCenter` | `components/dashboard/VoiceCenter.tsx` | Side panel: expert-switching dropdown + voice mode toggle |
+| `VoiceOrb` | `components/dashboard/VoiceOrb.tsx` | Voice-state visualization orb |
+| `UserInfoPanel` | `components/dashboard/UserInfoPanel.tsx` | User profile display and editing |
+| `TasksPanel` | `components/dashboard/TasksPanel.tsx` | List of all conversation threads |
+| `ChatPreview` | `components/dashboard/ChatPreview.tsx` | Recent message preview, latest 40 messages |
+| `GlowCard` | `components/ui/GlowCard.tsx` | Base UI component for glowing cards |
+| `SectionTitle` | `components/ui/SectionTitle.tsx` | Section title component |
+| `StatusPill` | `components/ui/StatusPill.tsx` | Status label component |
 
-**Hooks：**
+**Hooks:**
 
-| Hook | 文件 | 职责 |
+| Hook | File | Responsibility |
 |------|------|------|
-| `useVoiceInput` | `hooks/useVoiceInput.ts` | MediaRecorder + VAD（AudioContext RMS 静音检测） + Speechmatics 批处理 ASR |
-| `useTTS` | `hooks/useTTS.ts` | ElevenLabs TTS（POST `/api/synthesize` → Blob → Audio 播放） |
-| `useTranscriptStream` | `hooks/useTranscriptStream.ts` | UI 占位轮转字幕（演示用） |
+| `useVoiceInput` | `hooks/useVoiceInput.ts` | MediaRecorder + VAD, using AudioContext RMS silence detection, plus Speechmatics batch ASR |
+| `useTTS` | `hooks/useTTS.ts` | ElevenLabs TTS: POST `/api/synthesize` → Blob → audio playback |
+| `useTranscriptStream` | `hooks/useTranscriptStream.ts` | Rotating placeholder subtitles in the UI, used for demos |
 
-**代理路由**（`next.config.ts`）：
-- `/api/*` → `localhost:8080`（FastAPI）
-- `/webhooks/*` → `localhost:5005`（Rasa CALM）
-- `/worker/*` → `localhost:8080`（Worker 状态）
+**Proxy routes** (`next.config.ts`):
+- `/api/*` → `localhost:8080` (FastAPI)
+- `/webhooks/*` → `localhost:5005` (Rasa CALM)
+- `/worker/*` → `localhost:8080` (Worker status)
 
 ---
 
-### 2. ChatPanel — 主聊天界面
+### 2. ChatPanel — Main Chat Interface
 
-`ChatPanel` 是当前的核心聊天组件，整合了所有交互能力：
+`ChatPanel` is the current core chat component and integrates all interaction capabilities:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ Top Bar: [线程侧边栏开关] [专家下拉] [语音状态徽章]    │
+│ Top Bar: [thread sidebar toggle] [expert dropdown]  │
+│          [voice status badge]                       │
 ├────────────────┬────────────────────────────────────┤
-│  线程侧边栏    │  消息气泡区域                        │
-│  (可折叠)      │  ─ user bubble (右)                 │
-│  ─ New Chat    │  ─ assistant bubble (左)            │
-│  ─ 线程列表    │    └ context_meta 标注:             │
-│    双击重命名  │      Brain: N chunks                │
-│    悬停删除    │      Users: team exchanges          │
-│                │      UserCircle: profile loaded     │
-│                │  ─ 发送中 context 加载动画           │
-│                │  ─ 语音模式实时转录预览               │
+│  Thread        │  Message bubble area                │
+│  sidebar       │  ─ user bubble (right)              │
+│  (collapsible) │  ─ assistant bubble (left)          │
+│  ─ New Chat    │    └ context_meta labels:           │
+│  ─ Thread list │      Brain: N chunks                │
+│    double-click│      Users: team exchanges          │
+│    to rename   │      UserCircle: profile loaded     │
+│    hover to    │  ─ context loading animation        │
+│    delete      │  ─ real-time transcript preview     │
+│                │    in voice mode                    │
 ├────────────────┴────────────────────────────────────┤
-│ Input Bar: [📎附件] [文本输入] [🎤语音] [发送]        │
-│  附件预览: file.pdf (12.3 KB) [×]                    │
+│ Input Bar: [📎 attachment] [text input] [🎤 voice]   │
+│            [send]                                   │
+│  Attachment preview: file.pdf (12.3 KB) [×]          │
 └─────────────────────────────────────────────────────┘
 ```
 
-**文件上传流程：**
+**File upload flow:**
+
 ```
-用户点击📎 → 选择文件 → POST /api/files/upload
+User clicks 📎 → selects file → POST /api/files/upload
   → file_service.py:
       save_upload() → .data/uploads/{file_id}/
-      extract_text()  → .txt (PDF/DOCX/CSV/MD/TXT)
-  → 返回 file_id
+      extract_text() → .txt (PDF/DOCX/CSV/MD/TXT)
+  → returns file_id
   → sendMessage(text, persona_id, file_ids=[file_id])
-  → action_persona_chat 注入 [UPLOADED FILES] block
+  → action_persona_chat injects the [UPLOADED FILES] block
 ```
 
 ---
 
 ### 3. FastAPI REST Server (api_server.py — port 8080)
 
-| 端点 | 模块 | 职责 |
+| Endpoint | Module | Responsibility |
 |------|------|------|
-| `GET/POST /api/experts` | `persona_store`, `distillation` | 专家列表 / 女娲蒸馏 |
-| `GET /api/experts/{id}` | `persona_store` | 单专家详情 |
-| `GET/PUT /api/user/{id}` | `store` | 用户画像读写 |
-| `GET /api/threads[/{id}]` | `store` | 线程列表 / 详情 |
-| `GET /api/x/creator/{handle}` | `x_client` | 抓取 X 帖子 |
-| `POST /api/files/upload` | `file_service` | 文件上传 + 文本提取 |
-| `GET /api/files[/{id}]` | `file_service` | 文件列表 / 元数据 |
-| `POST /api/transcribe` | httpx → Speechmatics | 语音 → 文字（批处理） |
-| `POST /api/synthesize` | httpx → ElevenLabs | 文字 → 语音（per-persona 声音） |
-| `POST /api/notifications/email/send` | `email_client` | SMTP 邮件发送 |
-| `GET/POST /worker/*` | `worker/scheduler` | Worker 状态 / 手动触发 |
+| `GET/POST /api/experts` | `persona_store`, `distillation` | Expert list / Nüwa distillation |
+| `GET /api/experts/{id}` | `persona_store` | Single expert details |
+| `GET/PUT /api/user/{id}` | `store` | Read/write user profile |
+| `GET /api/threads[/{id}]` | `store` | Thread list / thread details |
+| `GET /api/x/creator/{handle}` | `x_client` | Fetch X posts |
+| `POST /api/files/upload` | `file_service` | File upload + text extraction |
+| `GET /api/files[/{id}]` | `file_service` | File list / metadata |
+| `POST /api/transcribe` | httpx → Speechmatics | Speech → text, batch processing |
+| `POST /api/synthesize` | httpx → ElevenLabs | Text → speech, per-persona voice |
+| `POST /api/notifications/email/send` | `email_client` | Send email via SMTP |
+| `GET/POST /worker/*` | `worker/scheduler` | Worker status / manual trigger |
 
-**新增模块：**
+**New module:**
 
-| 模块 | 职责 |
+| Module | Responsibility |
 |------|------|
-| `services/file_service.py` | 文件上传存储、文本提取（pypdf / python-docx / pandas）、元数据 JSON |
+| `services/file_service.py` | File upload storage, text extraction with pypdf / python-docx / pandas, and metadata JSON |
 
 ---
 
-### 4. 语音管道
+### 4. Voice Pipeline
 
-#### ASR（语音识别）— Speechmatics 批处理模式
-
-```
-用户说话 → MediaRecorder (webm/opus)
-         → VAD: AudioContext + RMS 静音检测
-           (3s 静音 → 自动停止录制)
-         → POST /api/transcribe  {file: audio.webm}
-         → Speechmatics 批处理 API:
-             1. POST /v2/jobs/  → job_id
-             2. 轮询 GET /v2/jobs/{id}  (max 30s)
-             3. GET /v2/jobs/{id}/transcript?format=txt
-         → { transcript: "..." }
-         → submit(text)
-```
-
-#### TTS（语音合成）— ElevenLabs（已从 Rime 迁移）
+#### ASR — Speech Recognition with Speechmatics Batch Mode
 
 ```
-assistant 回复 → useTTS.speak(text, persona_id)
-             → POST /api/synthesize  {text, persona_id}
-             → 查 config.yml: elevenlabs_voice_id (per-persona)
-             → ElevenLabs POST /v1/text-to-speech/{voice_id}
-             → 返回 audio/mpeg Blob
-             → URL.createObjectURL → new Audio().play()
+User speaks → MediaRecorder (webm/opus)
+            → VAD: AudioContext + RMS silence detection
+              (3s silence → automatically stop recording)
+            → POST /api/transcribe {file: audio.webm}
+            → Speechmatics batch API:
+                1. POST /v2/jobs/ → job_id
+                2. Poll GET /v2/jobs/{id} (max 30s)
+                3. GET /v2/jobs/{id}/transcript?format=txt
+            → { transcript: "..." }
+            → submit(text)
 ```
 
-**TTS-VAD 联动（回声抑制）：**
+#### TTS — Speech Synthesis with ElevenLabs, migrated from Rime
+
 ```
-isSpeaking=true  → cancelRecording()  (丢弃当前录音，防止回声)
-isSpeaking=false → startRecording()   (TTS 结束后自动重开麦克风)
+assistant reply → useTTS.speak(text, persona_id)
+                → POST /api/synthesize {text, persona_id}
+                → read config.yml: elevenlabs_voice_id (per-persona)
+                → ElevenLabs POST /v1/text-to-speech/{voice_id}
+                → return audio/mpeg Blob
+                → URL.createObjectURL → new Audio().play()
+```
+
+**TTS-VAD coordination for echo suppression:**
+
+```
+isSpeaking=true  → cancelRecording()  (discard current recording to avoid echo)
+isSpeaking=false → startRecording()   (automatically reopen microphone after TTS ends)
 ```
 
 ---
 
-### 5. 女娲蒸馏引擎 (distillation.py)
+### 5. Nüwa Distillation Engine (distillation.py)
 
 ```
 POST /api/experts  {display_name, x_handle, wikipedia_url}
@@ -229,84 +234,90 @@ Phase 2-3 _synthesize_framework()
         │       expression_dna / anti_patterns
         │       honest_boundaries / core_tensions
         ▼
-Phase 4   _quality_check()  +  _embed()
+Phase 4   _quality_check() + _embed()
         │   → validate field completeness
         │   → ChromaDB embedding (tweets + wiki + framework_summary)
         │   → append to config.yml
         │   → write to .data/personas/{id}.json
         ▼
 Return Expert object, using the same format as GET /api/experts
+```
 
 ---
 
 ### 6. Rasa CALM (port 5005)
 
-| Flow | 触发 | Action |
+| Flow | Trigger | Action |
 |------|------|--------|
-| `switch_persona` | UI `/switch_persona{...}` 或语音"切换到 XXX" | `action_switch_persona` |
-| `update_user_preference` | 用户自我介绍 | `action_update_user_pref` |
-| `general_chat` | 默认 fallback | `action_persona_chat` |
+| `switch_persona` | UI `/switch_persona{...}` or voice command "switch to XXX" | `action_switch_persona` |
+| `update_user_preference` | User self-introduction | `action_update_user_pref` |
+| `general_chat` | Default fallback | `action_persona_chat` |
 
 ---
 
-### 7. action_persona_chat — System Prompt 拼装
+### 7. action_persona_chat — System Prompt Assembly
 
-每次对话动态拼装 **7 个 block**（新增 TEAM INSIGHTS + UPLOADED FILES）：
+Each conversation dynamically assembles **7 blocks**, including the newly added TEAM INSIGHTS and UPLOADED FILES blocks:
 
 ```
 [CONTEXT 1 — PERSONA DEFINITION]
   display_name + handle + traits + style + briefing
 
-[COGNITIVE FRAMEWORK]            ← 蒸馏专家专有
+[COGNITIVE FRAMEWORK]            ← specific to distilled experts
   mental_models + heuristics + expression_dna + anti_patterns + tensions
 
-[RETRIEVED KNOWLEDGE]            ← Chroma top-5 chunks（query rewrite + 距离门控）
+[RETRIEVED KNOWLEDGE]            ← Chroma top-5 chunks, with query rewrite + distance gating
   tweets + wiki + framework_summary
-  grounded=False → 跳过 RAG，进入 framework-only 模式
+  grounded=False → skip RAG and enter framework-only mode
 
-[CONTEXT 2 — TEAM INSIGHTS]     ← 同线程内其他专家的最近 6 条回复
-  [other_persona_id]: 摘要…
+[CONTEXT 2 — TEAM INSIGHTS]      ← latest 6 replies from other experts in the same thread
+  [other_persona_id]: summary…
 
 [CONTEXT 3 — USER PROFILE]
   name + role + interests + raw_description + global_summary
 
-[THREAD HISTORY]                 ← 最近 12 条原文 + 滚动摘要（evicted turns）
+[THREAD HISTORY]                 ← latest 12 raw turns + rolling summary of evicted turns
 
-[UPLOADED FILES]                 ← 用户本轮上传的文件（最多 4000 chars/file）
+[UPLOADED FILES]                 ← files uploaded in the current turn, max 4000 chars/file
   [Uploaded File] file_id / filename / content
 ```
 
-**Query Rewriting（新增）：**
+**Query rewriting, newly added:**
+
 ```
-follow-up: "你对这点怎么看？"
+follow-up: "What do you think about this?"
   → _rewrite_query(history_text, user_message)
-  → LLM one-shot → "你对 [上文主题] 的看法"
+  → LLM one-shot → "your view on [topic from previous context]"
   → rewritten query → Chroma.query()
 ```
 
-**RAG 相关性门控（新增）：**
+**RAG relevance gating, newly added:**
+
 ```
-Chroma 返回 top-5 chunks + L2 distances
-  → 过滤 dist > MAX_DISTANCE (1.5)
-  → 全部过滤 → framework-only 模式（不拒绝回复，改用 cognitive framework 推理）
+Chroma returns top-5 chunks + L2 distances
+  → filter out dist > MAX_DISTANCE (1.5)
+  → if all chunks are filtered out → framework-only mode
+     (do not refuse to answer; reason from the cognitive framework instead)
 ```
 
-**Context Meta 响应（新增）：**
+**Context metadata response, newly added:**
+
 ```python
 custom={
     "grounded": True/False,
     "context": {
-        "own_chunks": N,           # 本次命中的 RAG chunk 数
-        "other_expert_msgs": N,    # 同线程内其他专家消息数
-        "user_profile": bool,      # 是否有用户画像
+        "own_chunks": N,           # number of RAG chunks hit in this turn
+        "other_expert_msgs": N,    # number of messages from other experts in the same thread
+        "user_profile": bool,      # whether the user profile is loaded
     }
 }
 ```
-→ 前端 ChatPanel 在回复气泡下方渲染 context meta 标注。
+
+→ The frontend `ChatPanel` renders the context metadata labels under the assistant reply bubble.
 
 ---
 
-### 8. ChromaDB (本地持久化)
+### 8. ChromaDB (Local Persistence)
 
 ```
 .data/chroma_db/
@@ -314,75 +325,75 @@ custom={
     ├── tweet_{post_id}      type=tweet
     ├── wiki_summary         type=wikipedia, section=summary
     └── framework_summary    type=cognitive_framework, section=full
-                             ← 蒸馏专家新增
+                             ← newly added for distilled experts
 ```
 
 ---
 
-### 9. 文件服务 (file_service.py)
+### 9. File Service (file_service.py)
 
 ```
 .data/uploads/
 └── file_{hex12}/
-    ├── {original_filename}  ← 原始文件
-    ├── extracted.txt        ← 提取的纯文本
+    ├── {original_filename}  ← original file
+    ├── extracted.txt        ← extracted plain text
     └── metadata.json        ← file_id, user_id, filename, size, created_at, …
 
-支持格式: .pdf (pypdf) / .docx (python-docx) / .csv (pandas→Markdown)
-         / .txt / .md (直接读取)
+Supported formats: .pdf (pypdf) / .docx (python-docx) / .csv (pandas → Markdown)
+                   / .txt / .md (direct read)
 ```
 
 ---
 
-### 10. Persona 配置 (data/personas/config.yml)
+### 10. Persona Configuration (data/personas/config.yml)
 
-每个 Persona 新增字段（相较旧版）：
+New fields added to each Persona, compared with the previous version:
 
-| 字段 | 说明 |
+| Field | Description |
 |------|------|
-| `elevenlabs_voice_id` | 每专家独立的 ElevenLabs 声音 ID（已从 rime_voice_id 迁移） |
-| `content_urls` | 补充文章/博客 URL（蒸馏阶段抓取） |
-| `youtube_video_ids` | 演讲视频 ID（蒸馏阶段字幕抓取）|
+| `elevenlabs_voice_id` | Independent ElevenLabs voice ID for each expert, migrated from `rime_voice_id` |
+| `content_urls` | Additional article/blog URLs fetched during distillation |
+| `youtube_video_ids` | Talk video IDs used for transcript fetching during distillation |
 
-当前已有 **8 个专家**：Elon Musk, Sam Altman, Paul Graham, Naval Ravikant, Jensen Huang, Donald J. Trump, Taylor Swift, Katy Perry。
+Current expert library includes **8 experts**: Elon Musk, Sam Altman, Paul Graham, Naval Ravikant, Jensen Huang, Donald J. Trump, Taylor Swift, and Katy Perry.
 
 ---
 
 ### 11. Always-On Worker (APScheduler)
 
 ```
-启动时:
-  扫描 config.yml → 未初始化的专家全量 embed
+On startup:
+  scan config.yml → fully embed experts that have not been initialized
 
-每 WORKER_INTERVAL_HOURS (默认 6h):
+Every WORKER_INTERVAL_HOURS (default: 6h):
   for each persona:
-    X_API_MODE=live  → 抓最新推文 (XClient)
-    X_API_MODE=mock  → 读 data/personas/raw/{id}_tweets.json
-    增量 embed 新内容 → Chroma
-    LLM 生成 briefing (~100字) → persona JSON
-  更新 .data/worker_state.json
+    X_API_MODE=live  → fetch latest tweets (XClient)
+    X_API_MODE=mock  → read data/personas/raw/{id}_tweets.json
+    incrementally embed new content → Chroma
+    LLM generates briefing (~100 words) → persona JSON
+  update .data/worker_state.json
 ```
 
 ---
 
-## 关键数据流
+## Key Data Flows
 
-### 女娲蒸馏流
+### Nüwa Distillation Flow
 
 ```
-用户点击 "+" → 填写 Richard Feynman + Wikipedia URL
+User clicks "+" → enters Richard Feynman + Wikipedia URL
   → POST /api/experts
   → distillation.py Phase 1-4 (~35s)
-  → .data/personas/richard_feynman.json 写入
-  → data/personas/config.yml 追加
-  → 返回 Expert 对象
-  → 前端列表即时显示，可直接开始对话
+  → write .data/personas/richard_feynman.json
+  → append to data/personas/config.yml
+  → return Expert object
+  → frontend list updates immediately; user can start chatting directly
 ```
 
-### RAG 对话流（带 Query Rewrite + 文件上传）
+### RAG Conversation Flow with Query Rewrite + File Upload
 
 ```
-用户: "你对量子力学的教学方式怎么看？" + 附件: lecture_notes.pdf
+User: "What do you think about the teaching style of quantum mechanics?" + attachment: lecture_notes.pdf
   → ChatPanel: POST /api/files/upload → file_id
   → POST /webhooks/rest/webhook {text, metadata: {persona_id, file_ids}}
   → action_persona_chat:
@@ -396,42 +407,42 @@ custom={
           reply = Nebius LLM(prompt)
           grounded = True
       else:
-          prompt = framework-only 模式
+          prompt = framework-only mode
           grounded = False
       → return {text, custom: {grounded, context: {own_chunks, …}}}
-  → useTTS.speak(reply, persona_id) → ElevenLabs → 播放
-  → ChatPanel 渲染 context meta 标注
+  → useTTS.speak(reply, persona_id) → ElevenLabs → playback
+  → ChatPanel renders context metadata labels
 ```
 
-### 语音全双工流
+### Full-Duplex Voice Flow
 
 ```
-用户说话
+User speaks
   → useVoiceInput: MediaRecorder + VAD
-  → 静音 3s → stop → POST /api/transcribe → Speechmatics batch
+  → 3s silence → stop → POST /api/transcribe → Speechmatics batch
   → transcript → submit(text) → sendMessage → Rasa → action_persona_chat
   → reply → useTTS.speak()
-       ↓ isSpeaking=true → cancelRecording() (防回声)
-       ↓ isSpeaking=false → startRecording() (自动重开)
+       ↓ isSpeaking=true → cancelRecording() (echo suppression)
+       ↓ isSpeaking=false → startRecording() (automatically reopen microphone)
 ```
 
 ---
 
-## 技术栈总表
+## Technology Stack Summary
 
-| 层 | 技术 | 版本/备注 |
+| Layer | Technology | Version / Notes |
 |----|------|---------|
-| 前端 | Next.js + React + TypeScript | Next.js 15, React 18, Tailwind CSS |
-| REST API | FastAPI + Pydantic | Python，port 8080 |
-| 对话引擎 | Rasa CALM | Rasa Pro，port 5005 |
-| LLM 推理 | Nebius Token Factory | Qwen3-235B-A22B-Instruct-2507 |
-| 向量数据库 | ChromaDB | 本地持久化 |
+| Frontend | Next.js + React + TypeScript | Next.js 15, React 18, Tailwind CSS |
+| REST API | FastAPI + Pydantic | Python, port 8080 |
+| Conversation engine | Rasa CALM | Rasa Pro, port 5005 |
+| LLM inference | Nebius Token Factory | Qwen3-235B-A22B-Instruct-2507 |
+| Vector database | ChromaDB | Local persistence |
 | Embedding | sentence-transformers | all-MiniLM-L6-v2 |
-| 蒸馏并发 | Python ThreadPoolExecutor | max_workers=6，Phase 1.5 |
-| 语音输入 | Speechmatics ASR（批处理） | 提交 job → 轮询 → 取结果；VAD 由前端 AudioContext+RMS 驱动 |
-| 语音输出 | ElevenLabs TTS | per-persona 独立声音 ID（替换 Rime） |
-| 文件服务 | pypdf + python-docx + pandas | PDF/DOCX/CSV/TXT/MD → extracted.txt |
-| X 数据源 | X API v2 | XClient，支持 live/mock 双模式 |
-| 后台调度 | APScheduler | 内嵌 action server 进程 |
-| Python 运行时 | Python 3.11 | uv 管理依赖 |
-| 包管理 | uv (Python) + npm (前端) | — |
+| Distillation concurrency | Python ThreadPoolExecutor | max_workers=6, Phase 1.5 |
+| Voice input | Speechmatics ASR, batch mode | Submit job → poll → fetch result; VAD driven by frontend AudioContext + RMS |
+| Voice output | ElevenLabs TTS | Independent per-persona voice ID, replacing Rime |
+| File service | pypdf + python-docx + pandas | PDF/DOCX/CSV/TXT/MD → extracted.txt |
+| X data source | X API v2 | XClient, supports both live and mock modes |
+| Background scheduling | APScheduler | Embedded inside the action server process |
+| Python runtime | Python 3.11 | Dependencies managed with uv |
+| Package management | uv (Python) + npm (frontend) | — |

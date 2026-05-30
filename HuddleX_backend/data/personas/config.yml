@@ -5,103 +5,100 @@ personas:
   x_posts_file: data/personas/raw/elon_musk_tweets.json
   wikipedia_url: https://en.wikipedia.org/wiki/Elon_Musk
   rime_voice_id: ''
-  elevenlabs_voice_id: 'IKne3meq5aSn9XLyUdCD'  # Charlie – Deep, Confident, Energetic
+  elevenlabs_voice_id: IKne3meq5aSn9XLyUdCD
   avatar_color: from-slate-700 to-slate-900
   initials: EM
   content_urls: []
   youtube_video_ids:
-    # Lex Fridman #400 (2023) – Elon Musk on X, Tesla, SpaceX, AI
-    - DxREm3s1scA
-    # Lex Fridman #252 (2021) – Elon Musk on SpaceX, Tesla, AI
-    - Gix-xa-FYSo
-
+  - DxREm3s1scA
+  - Gix-xa-FYSo
 - id: sam_altman
   display_name: Sam Altman
   x_handle: '@sama'
   x_posts_file: data/personas/raw/sam_altman_tweets.json
   wikipedia_url: https://en.wikipedia.org/wiki/Sam_Altman
   rime_voice_id: ''
-  elevenlabs_voice_id: 'cjVigY5qzO86Huf0OWal'  # Eric – Smooth, Trustworthy
+  elevenlabs_voice_id: cjVigY5qzO86Huf0OWal
   avatar_color: from-blue-700 to-blue-900
   initials: SA
   content_urls:
-    - https://blog.samaltman.com/how-to-be-successful
-    - https://blog.samaltman.com/what-i-wish-someone-had-told-me
-    - https://blog.samaltman.com/the-intelligence-age
-    - https://moores.samaltman.com/
+  - https://blog.samaltman.com/how-to-be-successful
+  - https://blog.samaltman.com/what-i-wish-someone-had-told-me
+  - https://blog.samaltman.com/the-intelligence-age
+  - https://moores.samaltman.com/
   youtube_video_ids:
-    # Lex Fridman #367 – Sam Altman: OpenAI, GPT-4, AGI
-    - jvqFAi7vkBc
-
+  - jvqFAi7vkBc
 - id: paul_graham
   display_name: Paul Graham
   x_handle: '@paulg'
   x_posts_file: data/personas/raw/paul_graham_tweets.json
   wikipedia_url: https://en.wikipedia.org/wiki/Paul_Graham_(programmer)
   rime_voice_id: ''
-  elevenlabs_voice_id: 'pqHfZKP75CvOlQylNhV4'  # Bill – Wise, Mature, Balanced
+  elevenlabs_voice_id: pqHfZKP75CvOlQylNhV4
   avatar_color: from-orange-600 to-red-700
   initials: PG
   content_urls:
-    - http://www.paulgraham.com/wealth.html
-    - http://www.paulgraham.com/startupideas.html
-    - http://www.paulgraham.com/ds.html
-    - http://www.paulgraham.com/growth.html
-    - http://www.paulgraham.com/hiring.html
-    - http://www.paulgraham.com/die.html
+  - http://www.paulgraham.com/wealth.html
+  - http://www.paulgraham.com/startupideas.html
+  - http://www.paulgraham.com/ds.html
+  - http://www.paulgraham.com/growth.html
+  - http://www.paulgraham.com/hiring.html
+  - http://www.paulgraham.com/die.html
   youtube_video_ids: []
-
 - id: naval_ravikant
   display_name: Naval Ravikant
   x_handle: '@naval'
   x_posts_file: data/personas/raw/naval_ravikant_tweets.json
   wikipedia_url: https://en.wikipedia.org/wiki/Naval_Ravikant
   rime_voice_id: ''
-  elevenlabs_voice_id: 'SAz9YHcvj6GT2YYXdXww'  # River – Relaxed, Neutral, Informative
+  elevenlabs_voice_id: SAz9YHcvj6GT2YYXdXww
   avatar_color: from-violet-700 to-purple-900
   initials: NR
   content_urls:
-    - https://nav.al/rich
-    - https://nav.al/happiness
-    - https://nav.al/accountability
+  - https://nav.al/rich
+  - https://nav.al/happiness
+  - https://nav.al/accountability
   youtube_video_ids:
-    # Joe Rogan #1309 – Naval Ravikant
-    - 3qHkcs3kG44
-
+  - 3qHkcs3kG44
 - id: jensen_huang
   display_name: Jensen Huang
   x_handle: '@jensenhuang'
   x_posts_file: data/personas/raw/jensen_huang_tweets.json
   wikipedia_url: https://en.wikipedia.org/wiki/Jensen_Huang
   rime_voice_id: ''
-  elevenlabs_voice_id: 'TX3LPaxmHKxFdv7VOQHJ'  # Liam – Energetic, Social Media Creator
+  elevenlabs_voice_id: TX3LPaxmHKxFdv7VOQHJ
   avatar_color: from-green-700 to-emerald-900
   initials: JH
   content_urls: []
   youtube_video_ids:
-    # Lex Fridman #355 – Jensen Huang: Nvidia, AI, Chips
-    - lXLBTBLpTs0
-
+  - lXLBTBLpTs0
 - id: donald_j_trump
   display_name: Donald J. Trump
   x_handle: Donald J. Trump
   x_posts_file: data/personas/raw/donald_j_trump_tweets.json
   wikipedia_url: https://en.wikipedia.org/wiki/Donald_Trump
   rime_voice_id: ''
-  elevenlabs_voice_id: 'pNInz6obpgDQGcFmaJgB'  # Adam – Dominant, Firm
+  elevenlabs_voice_id: pNInz6obpgDQGcFmaJgB
   avatar_color: from-rose-600 to-pink-900
   initials: DJ
   content_urls: []
   youtube_video_ids: []
-
 - id: taylor_swift
   display_name: Taylor Swift
   x_handle: Taylor Swift
   x_posts_file: data/personas/raw/taylor_swift_tweets.json
   wikipedia_url: https://en.wikipedia.org/wiki/Taylor_Swift
   rime_voice_id: ''
-  elevenlabs_voice_id: 'cgSgspJ2msm6clMCkdW9'  # Jessica – Playful, Bright, Warm
+  elevenlabs_voice_id: cgSgspJ2msm6clMCkdW9
   avatar_color: from-cyan-600 to-sky-900
   initials: TS
   content_urls: []
   youtube_video_ids: []
+- id: katy_perry
+  display_name: KATY PERRY
+  x_handle: KATY PERRY
+  x_posts_file: data/personas/raw/katy_perry_tweets.json
+  wikipedia_url: https://en.wikipedia.org/wiki/KATY_PERRY
+  rime_voice_id: ''
+  avatar_color: from-amber-600 to-yellow-900
+  initials: KP

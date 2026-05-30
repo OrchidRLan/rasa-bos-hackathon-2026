@@ -45,6 +45,15 @@ export default function ChatPanel() {
     getExperts().then(setExperts).catch(console.error);
   }, []);
 
+  // When a new expert is added elsewhere (e.g. ExpertsLibrary), activePersona
+  // changes to an ID not yet in our local list — append it so the dropdown shows it.
+  useEffect(() => {
+    if (activePersona && !experts.some((e) => e.id === activePersona.id)) {
+      setExperts((prev) => [...prev, activePersona]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePersona?.id]);
+
   // Close dropdown on outside click
   useEffect(() => {
     if (!dropdownOpen) return;

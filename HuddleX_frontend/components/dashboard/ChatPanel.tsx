@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronDown, Loader2, Mic, MicOff, Send, Plus,
   MessageSquarePlus, Trash2, PanelLeftClose, PanelLeftOpen,
+  Paperclip, X, FileText,
 } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useApp } from "@/lib/context";
-import { getExperts, sendMessage, switchPersona } from "@/lib/api";
+import { getExperts, sendMessage, switchPersona, uploadFile } from "@/lib/api";
 import { getAvatarGradient, getInitials } from "@/lib/expertUtils";
 import type { ChatMessage, Expert } from "@/lib/types";
 
@@ -19,6 +20,9 @@ export default function ChatPanel() {
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Expert dropdown
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -67,20 +71,46 @@ export default function ChatPanel() {
     }
   }
 
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAttachedFile(file);
+    e.target.value = "";
+  }
+
   const submit = useCallback(
     async (text: string) => {
-      if (!text.trim() || sending) return;
+      if ((!text.trim() && !attachedFile) || sending) return;
       setSending(true);
       setInput("");
+      const file = attachedFile;
+      setAttachedFile(null);
+      // Upload file first if attached
+      let fileLabel = "";
+      const fileIds: string[] = [];
+      if (file) {
+        setUploading(true);
+        try {
+          const result = await uploadFile(file, sessionId);
+          fileIds.push(result.file.file_id);
+          fileLabel = `[File: ${file.name}] `;
+        } catch (e) {
+          console.error("upload failed", e);
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      const messageText = (fileLabel + text.trim()).trim() || `[File: ${file?.name}]`;
       pushMessages([{
         id: `local_${Date.now()}`,
         timestamp: new Date().toISOString(),
         persona_id: null,
         role: "user",
-        content: text.trim(),
+        content: messageText,
       }]);
       try {
-        const replies = await sendMessage(sessionId, text.trim(), activePersona?.id);
+        const replies = await sendMessage(sessionId, messageText, activePersona?.id, fileIds.length > 0 ? fileIds : undefined);
         const msgs: ChatMessage[] = replies
           .filter((r) => r.text)
           .map((r, i) => ({
@@ -97,7 +127,7 @@ export default function ChatPanel() {
         setSending(false);
       }
     },
-    [sessionId, activePersona, pushMessages, sending]
+    [sessionId, activePersona, pushMessages, sending, attachedFile]
   );
 
   const { transcript, isRecording, isTranscribing, startRecording, stopRecording } =
@@ -206,7 +236,7 @@ export default function ChatPanel() {
 
             {/* Thread list */}
             <ul className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-              {threads.map((thread) => {
+              {threads.map((thread: import("@/lib/context").LocalThread) => {
                 const isActive = thread.id === activeThreadId;
                 const isRenaming = editingThreadId === thread.id;
                 return (
@@ -316,17 +346,42 @@ export default function ChatPanel() {
 
       {/* ── Input bar ── */}
       <div className="shrink-0 px-4 py-3 border-t border-slate-100">
+        {/* File attachment preview */}
+        {attachedFile && (
+          <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-100 w-fit max-w-full">
+            <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+            <span className="text-xs text-blue-700 truncate max-w-[200px]">{attachedFile.name}</span>
+            <span className="text-xs text-blue-400">({(attachedFile.size / 1024).toFixed(1)} KB)</span>
+            <button
+              type="button"
+              onClick={() => setAttachedFile(null)}
+              className="text-blue-400 hover:text-blue-600 shrink-0"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept=".pdf,.doc,.docx,.txt,.md,.csv,.png,.jpg,.jpeg"
+          onChange={handleFileChange}
+        />
+
         <form
           className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all"
           onSubmit={(e) => { e.preventDefault(); submit(input); }}
         >
           <button
             type="button"
-            onClick={createThread}
-            title="New chat"
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach file"
             className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 shrink-0 transition-colors"
           >
-            <Plus className="w-4 h-4" />
+            <Paperclip className="w-4 h-4" />
           </button>
 
           <input
@@ -353,10 +408,10 @@ export default function ChatPanel() {
           {/* Send */}
           <button
             type="submit"
-            disabled={sending || !input.trim()}
+            disabled={sending || uploading || (!input.trim() && !attachedFile)}
             className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white hover:bg-blue-700 disabled:opacity-40 shrink-0 transition-colors"
           >
-            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {sending || uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </form>
       </div>

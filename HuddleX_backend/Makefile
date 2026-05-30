@@ -1,7 +1,7 @@
 VENV   := .venv
 PYTHON := ./$(VENV)/bin/python
 RASA   := $(PYTHON) -m rasa
-UV     := $(shell which uv)
+UV     := $(shell which uv 2>/dev/null)
 
 ifneq (,$(wildcard .env))
     include .env
@@ -31,9 +31,15 @@ help:
 
 .PHONY: install
 install:
+ifneq ($(UV),)
 	$(UV) venv --allow-existing $(VENV)
 	$(UV) pip install pip setuptools wheel packaging
 	$(UV) pip install -e ".[voice]"
+else
+	python3 -m venv $(VENV)
+	./$(VENV)/bin/pip install --upgrade pip setuptools wheel packaging
+	./$(VENV)/bin/pip install -e ".[voice]"
+endif
 
 .PHONY: seed-personas
 seed-personas:

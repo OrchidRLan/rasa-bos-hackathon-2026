@@ -7,6 +7,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 const RASA_BASE = process.env.NEXT_PUBLIC_RASA_BASE ?? "http://localhost:5005";
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: process.cwd(),
+  },
   async rewrites() {
     return [
       { source: "/api/:path*",      destination: `${API_BASE}/api/:path*` },

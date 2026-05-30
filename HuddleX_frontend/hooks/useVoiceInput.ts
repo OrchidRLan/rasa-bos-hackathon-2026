@@ -17,6 +17,7 @@ export function useVoiceInput({ onTranscript, continuous = false }: Options = {}
   const chunksRef = useRef<Blob[]>([]);
   const enabledRef = useRef(false);
   const onTranscriptRef = useRef(onTranscript);
+  const startOnceRef = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
 
   const startOnce = useCallback(async () => {
@@ -36,7 +37,7 @@ export function useVoiceInput({ onTranscript, continuous = false }: Options = {}
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         if (chunksRef.current.length === 0) {
-          if (continuous && enabledRef.current) startOnce();
+          if (continuous && enabledRef.current) void startOnceRef.current?.();
           return;
         }
         const blob = new Blob(chunksRef.current, { type: mimeType });
@@ -57,7 +58,7 @@ export function useVoiceInput({ onTranscript, continuous = false }: Options = {}
           setTranscript("Transcription failed");
         } finally {
           setIsTranscribing(false);
-          if (continuous && enabledRef.current) startOnce();
+          if (continuous && enabledRef.current) void startOnceRef.current?.();
         }
       };
 
@@ -71,6 +72,9 @@ export function useVoiceInput({ onTranscript, continuous = false }: Options = {}
       setIsRecording(false);
     }
   }, [continuous]);
+  useEffect(() => {
+    startOnceRef.current = startOnce;
+  }, [startOnce]);
 
   const startRecording = useCallback(async () => {
     enabledRef.current = true;

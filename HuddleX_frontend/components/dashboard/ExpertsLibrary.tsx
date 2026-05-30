@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Menu, Pencil, AtSign, Link2, Clock, Code2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, Menu, Pencil, AtSign, Link2, Clock, Code2, Loader2 } from "lucide-react";
 import GlowCard from "@/components/ui/GlowCard";
-import { experts } from "@/lib/mock-data";
+import { getExperts, switchPersona } from "@/lib/api";
+import { useApp } from "@/lib/context";
+import type { Expert } from "@/lib/types";
 
 function MetaRow({
   icon: Icon,
@@ -28,7 +30,35 @@ function MetaRow({
 }
 
 export default function ExpertsLibrary() {
-  const [selectedId, setSelectedId] = useState(experts[0].id);
+  const { sessionId, activePersona, setActivePersona } = useApp();
+  const [experts, setExperts] = useState<Expert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  useEffect(() => {
+    getExperts()
+      .then((data) => {
+        setExperts(data);
+        // Auto-select first if nothing active yet
+        if (data.length > 0 && !activePersona) setActivePersona(data[0]);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleSelect(expert: Expert) {
+    if (expert.id === activePersona?.id) return;
+    setSwitching(expert.id);
+    try {
+      await switchPersona(sessionId, expert.id);
+      setActivePersona(expert);
+    } catch (e) {
+      console.error("switch failed", e);
+    } finally {
+      setSwitching(null);
+    }
+  }
 
   return (
     <section className="flex flex-col h-full min-h-0">
@@ -50,50 +80,62 @@ export default function ExpertsLibrary() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-        {experts.map((expert) => {
-          const selected = selectedId === expert.id;
-          return (
-            <GlowCard
-              key={expert.id}
-              className={`p-4 transition-all cursor-pointer ${
-                selected
-                  ? "ring-2 ring-blue-500/30 border-blue-200 shadow-md"
-                  : "hover:border-slate-300"
-              }`}
-            >
-              <button
-                type="button"
-                className="w-full text-left"
-                onClick={() => setSelectedId(expert.id)}
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          {experts.map((expert) => {
+            const selected = activePersona?.id === expert.id;
+            const isSwitching = switching === expert.id;
+            return (
+              <GlowCard
+                key={expert.id}
+                className={`p-4 transition-all cursor-pointer ${
+                  selected
+                    ? "ring-2 ring-blue-500/30 border-blue-200 shadow-md"
+                    : "hover:border-slate-300"
+                }`}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-12 h-12 rounded-full bg-gradient-to-br ${expert.avatarColor} flex items-center justify-center text-white text-sm font-semibold`}
-                    >
-                      {expert.initials}
+                <button
+                  type="button"
+                  className="w-full text-left"
+                  onClick={() => handleSelect(expert)}
+                  disabled={isSwitching}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-12 h-12 rounded-full bg-gradient-to-br ${expert.avatar_color} flex items-center justify-center text-white text-sm font-semibold`}
+                      >
+                        {isSwitching ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          expert.initials
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{expert.display_name}</h3>
+                        <p className="text-sm text-slate-500">{expert.subtitle}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{expert.name}</h3>
-                      <p className="text-sm text-slate-500">{expert.subtitle}</p>
-                    </div>
+                    <span className="text-xs text-blue-600 font-medium flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50">
+                      <Pencil className="w-3 h-3" />
+                      Edit
+                    </span>
                   </div>
-                  <span className="text-xs text-blue-600 font-medium flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50">
-                    <Pencil className="w-3 h-3" />
-                    Edit
-                  </span>
-                </div>
 
-                <MetaRow icon={AtSign} label="X Source" value={expert.xSource} />
-                <MetaRow icon={Link2} label="Wikipedia" value={expert.wikipedia} />
-                <MetaRow icon={Clock} label="Last Updated" value={expert.lastUpdated} />
-                <MetaRow icon={Code2} label="System Prompt" value="••••••••••••••••" />
-              </button>
-            </GlowCard>
-          );
-        })}
-      </div>
+                  <MetaRow icon={AtSign} label="X Source"    value={expert.x_source} />
+                  <MetaRow icon={Link2}  label="Wikipedia"   value={expert.wikipedia} />
+                  <MetaRow icon={Clock}  label="Last Updated" value={expert.last_updated || "—"} />
+                  <MetaRow icon={Code2}  label="System Prompt" value="••••••••••••••••" />
+                </button>
+              </GlowCard>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

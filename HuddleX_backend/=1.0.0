@@ -1,0 +1,5 @@
+Collecting absl-py
+  Downloading absl_py-2.4.0-py3-none-any.whl.metadata (3.3 kB)
+Downloading absl_py-2.4.0-py3-none-any.whl (135 kB)
+Installing collected packages: absl-py
+Successfully installed absl-py-2.4.0

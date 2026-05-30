@@ -25,13 +25,9 @@ export default function HomePage() {
         <div className="lg:col-span-5 min-h-[500px] lg:min-h-0 rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 lg:p-6">
             <VoiceCenter />
           </div>
-          <aside className="lg:col-span-3 min-h-[400px] lg:min-h-0">
-            
-            <ExpertsLibrary />
-          
-          </aside>
-
-          
+          <aside className="lg:col-span-3 min-h-[400px] lg:min-h-0">            
+            <ExpertsLibrary />          
+          </aside>          
 
           <aside className="lg:col-span-4 min-h-0 flex flex-col">
             <UserInfoPanel />

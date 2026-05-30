@@ -1,31 +1,49 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { MessageSquare, Users, Mic } from "lucide-react";
-import { chatMessages } from "@/lib/mock-data";
 import GlowCard from "@/components/ui/GlowCard";
+import { useApp } from "@/lib/context";
 
 export default function ChatPreview() {
+  const { latestMessages, activePersona } = useApp();
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [latestMessages]);
+
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold text-slate-900 mb-4 px-1">Recent Activity</h2>
 
       <GlowCard className="p-4 max-h-48 overflow-y-auto space-y-3">
-        {chatMessages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white rounded-br-md"
-                  : "bg-slate-100 text-slate-700 rounded-bl-md"
-              }`}
-            >
-              {msg.text}
-            </div>
-          </div>
-        ))}
+        {latestMessages.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-4">
+            Start chatting to see messages here.
+          </p>
+        ) : (
+          latestMessages.map((msg) => {
+            if (msg.role === "system_event") return null;
+            const isUser = msg.role === "user";
+            const label = isUser ? "You" : (msg.persona_id ?? activePersona?.display_name ?? "Expert");
+            return (
+              <div key={msg.id} className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+                <span className="text-xs text-slate-400 mb-1 px-1">{label}</span>
+                <div
+                  className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                    isUser
+                      ? "bg-blue-600 text-white rounded-br-md"
+                      : "bg-slate-100 text-slate-700 rounded-bl-md"
+                  }`}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={bottomRef} />
       </GlowCard>
     </section>
   );

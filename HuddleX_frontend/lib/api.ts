@@ -54,17 +54,19 @@ export async function sendMessage(
   sessionId: string,
   message: string,
   personaId?: string,
+  fileIds?: string[],
 ): Promise<RasaReply[]> {
   try {
+    const metadata: Record<string, unknown> = {};
+    if (personaId) metadata.persona_id = personaId;
+    if (fileIds && fileIds.length > 0) metadata.file_ids = fileIds;
     const res = await fetch("/webhooks/rest/webhook", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sender: sessionId,
         message,
-        // Carry the selected persona so the backend answers as exactly what the
-        // UI shows, regardless of whether a switch flow fired first.
-        ...(personaId ? { metadata: { persona_id: personaId } } : {}),
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       }),
     });
     if (!res.ok) throw new Error(`${res.status}`);
@@ -73,6 +75,18 @@ export async function sendMessage(
     console.error("sendMessage failed", e);
     return [{ text: "⚠️ Backend not reachable — is Rasa running? (make run-rasa)" }];
   }
+}
+
+export async function uploadFile(
+  file: File,
+  userId: string,
+): Promise<{ status: string; file: { file_id: string; filename: string; size: number } }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("user_id", userId);
+  const res = await fetch("/api/files/upload", { method: "POST", body: form });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 
 export async function switchPersona(

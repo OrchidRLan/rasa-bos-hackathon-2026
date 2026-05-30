@@ -110,7 +110,7 @@ export default function ChatPanel() {
         content: messageText,
       }]);
       try {
-        const replies = await sendMessage(sessionId, messageText, fileIds.length > 0 ? fileIds : undefined);
+        const replies = await sendMessage(sessionId, messageText, activePersona?.id, fileIds.length > 0 ? fileIds : undefined);
         const msgs: ChatMessage[] = replies
           .filter((r) => r.text)
           .map((r, i) => ({
@@ -236,7 +236,7 @@ export default function ChatPanel() {
 
             {/* Thread list */}
             <ul className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-              {threads.map((thread) => {
+              {threads.map((thread: import("@/lib/context").LocalThread) => {
                 const isActive = thread.id === activeThreadId;
                 const isRenaming = editingThreadId === thread.id;
                 return (

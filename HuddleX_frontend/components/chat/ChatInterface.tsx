@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Mic, MicOff, Send, ArrowUpRight } from "lucide-react";
 import DebtPlanCard from "./DebtPlanCard";
+import AdvisorDivergenceCard from "./AdvisorDivergenceCard";
+import MetaAdvisorCard from "./MetaAdvisorCard";
+import ActionTrackerCard from "./ActionTrackerCard";
 import { sendMessage } from "@/lib/api";
 import { useApp } from "@/lib/context";
+import { getAdvisorStances, type AdvisorStance } from "@/lib/advisorPersonas";
+import { getActiveAction, type TrackedAction } from "@/lib/actionTracker";
+import { getDueFollowUps } from "@/lib/actionTracker";
 import type { Debt } from "@/lib/debtCalculator";
 
-// ─── User financial profile (will come from Rasa memory / SQLite later) ──────
+// ─── Financial profile (from Rasa memory later) ───────────────────────────────
 const USER_DEBTS: Debt[] = [
   { id: "cc-a", name: "信用卡A", balance: 3200, apr: 0.28, minPayment: 64 },
   { id: "cc-b", name: "信用卡B", balance: 5800, apr: 0.24, minPayment: 116 },
@@ -16,12 +22,14 @@ const USER_DEBTS: Debt[] = [
 const MONTHLY_SURPLUS = 1100;
 
 // ─── Intent detection ─────────────────────────────────────────────────────────
-const DEBT_PLAN_TRIGGERS = [
-  "ramsey", "snowball", "还债", "债务", "还清", "payoff", "pay off",
-  "debt", "按ramsey", "按 ramsey",
-];
-function detectDebtPlanIntent(text: string) {
-  return DEBT_PLAN_TRIGGERS.some((t) => text.toLowerCase().includes(t));
+const DEBT_TRIGGERS   = ["ramsey", "snowball", "还债", "债务", "还清", "payoff", "pay off", "debt", "按ramsey"];
+const COMPARE_TRIGGERS = ["比较", "compare", "分歧", "哪个advisor", "其他人怎么看", "多个advisor"];
+
+function detectIntent(text: string): "debt_plan" | "divergence" | "none" {
+  const lower = text.toLowerCase();
+  if (COMPARE_TRIGGERS.some((t) => lower.includes(t))) return "divergence";
+  if (DEBT_TRIGGERS.some((t) => lower.includes(t))) return "debt_plan";
+  return "none";
 }
 
 // ─── Message types ────────────────────────────────────────────────────────────
@@ -31,11 +39,14 @@ type AdvisorMessage = {
   advisor: string;
   content: string;
   showDebtPlan?: boolean;
+  showDivergence?: boolean;
+  showMeta?: boolean;
+  selectedStanceId?: string;
   actions?: string[];
 };
 type Message = UserMessage | AdvisorMessage;
 
-const QUICK_PROMPTS = ["我要按Ramsey方法还债", "比较两种策略", "债务清零后怎么投资"];
+const QUICK_PROMPTS = ["我要按Ramsey方法还债", "比较所有advisor意见", "债务清零后怎么投资"];
 
 export default function ChatInterface() {
   const { sessionId, activePersona } = useApp();
@@ -44,11 +55,42 @@ export default function ChatInterface() {
   const [input, setInput] = useState("");
   const [listening, setListening] = useState(false);
   const [sending, setSending] = useState(false);
+  const [activeAction, setActiveAction] = useState<TrackedAction | null>(null);
+  const [selectedStanceId, setSelectedStanceId] = useState<string | undefined>();
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Load active action from localStorage on mount
+  useEffect(() => {
+    setActiveAction(getActiveAction());
+    // Surface any due follow-ups as a system message
+    const due = getDueFollowUps();
+    if (due.length > 0) {
+      setMessages([{
+        role: "advisor",
+        advisor: "HuddleX",
+        content: `你有 ${due.length} 个待回答的追踪问题，见下方：`,
+      }]);
+    }
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const refreshAction = useCallback(() => {
+    setActiveAction(getActiveAction());
+  }, []);
+
+  function handleSelectStance(stance: AdvisorStance) {
+    setSelectedStanceId(stance.advisorId);
+    // Update the last divergence message with selected stance
+    setMessages((prev) => prev.map((m, i) => {
+      if (i === prev.length - 1 && m.role === "advisor" && m.showDivergence) {
+        return { ...m, selectedStanceId: stance.advisorId, showMeta: true };
+      }
+      return m;
+    }));
+  }
 
   async function handleSend(text?: string) {
     const content = (text ?? input).trim();
@@ -59,20 +101,32 @@ export default function ChatInterface() {
     setMessages((prev) => [...prev, { role: "user", content }]);
 
     const advisorName = activePersona?.display_name ?? activePersona?.name ?? "Dave Ramsey";
+    const intent = detectIntent(content);
 
-    // Debt plan intent — handle locally with calculator
-    if (detectDebtPlanIntent(content)) {
+    if (intent === "divergence") {
+      setMessages((prev) => [...prev, {
+        role: "advisor",
+        advisor: "HuddleX",
+        content: "这是5位顾问对这个问题的不同看法。点击选择你最认同的方向：",
+        showDivergence: true,
+        showMeta: false,
+      }]);
+      setSending(false);
+      return;
+    }
+
+    if (intent === "debt_plan") {
       setMessages((prev) => [...prev, {
         role: "advisor",
         advisor: advisorName,
-        content: "好，我来帮你算清楚。根据你的债务和每月 $1,100 的盈余，这是你的两条路：",
+        content: "好，我来帮你算清楚。根据你的债务和每月 $1,100 的盈余，这是两条路的对比：",
         showDebtPlan: true,
       }]);
       setSending(false);
       return;
     }
 
-    // All other messages → Rasa
+    // Default → Rasa
     try {
       const replies = await sendMessage(sessionId, content, activePersona?.id);
       const responses: AdvisorMessage[] = replies
@@ -87,8 +141,8 @@ export default function ChatInterface() {
       ]);
     } catch {
       setMessages((prev) => [...prev, {
-        role: "advisor", advisor: "System",
-        content: "⚠️ 连接失败。请在 HuddleX_backend 目录运行：make run-rasa && make run-api",
+        role: "advisor" as const, advisor: "System",
+        content: "⚠️ 连接失败。cd HuddleX_backend && make run-rasa && make run-api",
       }]);
     } finally {
       setSending(false);
@@ -101,6 +155,7 @@ export default function ChatInterface() {
 
   const advisorName = activePersona?.display_name ?? activePersona?.name ?? "Dave Ramsey";
   const advisorInitials = advisorName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+  const stances = getAdvisorStances(MONTHLY_SURPLUS);
 
   return (
     <div className="flex flex-col h-full max-h-screen">
@@ -118,14 +173,27 @@ export default function ChatInterface() {
         }`}>
           {activePersona ? "Context loaded" : "Select an advisor →"}
         </span>
+
+        {/* Active action badge */}
+        {activeAction && (
+          <div className="ml-auto flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            Plan active · Month {activeAction.currentMonth}/{activeAction.totalMonths}
+          </div>
+        )}
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-        {messages.length === 0 && (
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+        {/* Active action tracker at top */}
+        {activeAction && (
+          <ActionTrackerCard action={activeAction} onUpdate={refreshAction} />
+        )}
+
+        {messages.length === 0 && !activeAction && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 text-sm text-center">
-            <p>在左侧 Experts Library 选择一个 Advisor</p>
-            <p className="text-xs">或直接点击下方快捷提示开始</p>
+            <p>在左侧选择一个 Advisor，然后开始对话</p>
+            <p className="text-xs">或点击下方快捷提示</p>
           </div>
         )}
 
@@ -139,7 +207,8 @@ export default function ChatInterface() {
               </div>
             )}
             {msg.role === "advisor" && (
-              <div className="space-y-3 max-w-2xl">
+              <div className="space-y-4 max-w-3xl">
+                {/* Advisor bubble */}
                 <div className="bg-white rounded-2xl rounded-tl-sm border border-slate-200 px-5 py-4 shadow-sm">
                   <p className="text-xs font-semibold text-emerald-600 mb-2">{msg.advisor}</p>
                   <p className="text-slate-800 text-sm leading-relaxed">{msg.content}</p>
@@ -154,8 +223,33 @@ export default function ChatInterface() {
                     </ol>
                   )}
                 </div>
+
+                {/* Layer 0: Debt Plan */}
                 {msg.showDebtPlan && (
                   <DebtPlanCard debts={USER_DEBTS} monthlySurplus={MONTHLY_SURPLUS} streaming />
+                )}
+
+                {/* Layer 1: Divergence */}
+                {msg.showDivergence && (
+                  <AdvisorDivergenceCard
+                    surplus={MONTHLY_SURPLUS}
+                    onSelect={handleSelectStance}
+                    selectedId={msg.selectedStanceId ?? selectedStanceId}
+                    streaming
+                  />
+                )}
+
+                {/* Layer 2: Meta-advisor (appears after selecting a stance) */}
+                {msg.showMeta && (
+                  <MetaAdvisorCard
+                    stances={stances}
+                    debts={USER_DEBTS}
+                    monthlySurplus={MONTHLY_SURPLUS}
+                    onCommit={(action) => {
+                      setActiveAction(action);
+                      refreshAction();
+                    }}
+                  />
                 )}
               </div>
             )}

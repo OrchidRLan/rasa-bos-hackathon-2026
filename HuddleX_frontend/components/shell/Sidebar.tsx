@@ -2,25 +2,57 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageCircle, LayoutDashboard, Anchor, TrendingUp, List } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MessageCircle, LayoutDashboard, Anchor, TrendingUp, List, Loader2 } from "lucide-react";
+import { useApp } from "@/lib/context";
+import { getExperts, getThreads } from "@/lib/api";
+import type { Expert, Thread } from "@/lib/types";
 
-const ADVISORS = [
-  { id: "dave-ramsey", name: "Dave Ramsey", subtitle: "The Disciplinarian", initials: "DR", color: "bg-emerald-500" },
-  { id: "warren-buffett", name: "Warren Buffett", subtitle: "The Value Investor", initials: "WB", color: "bg-blue-500" },
-  { id: "elon-musk", name: "Elon Musk", subtitle: "The Disruptor", initials: "EM", color: "bg-slate-500" },
-  { id: "mr-money-mustache", name: "Mr. Money Mustache", subtitle: "The Minimalist", initials: "MM", color: "bg-amber-500" },
-];
-
-const RECENT_CHATS = [
-  { id: "1", title: "Debt vs invest dilemma", time: "2m ago" },
-  { id: "2", title: "Should I buy a car now?", time: "1h ago" },
-  { id: "3", title: "Cut subscriptions or not", time: "3h ago" },
-  { id: "4", title: "Monthly budget review", time: "Yesterday" },
-  { id: "5", title: "Tech stocks — worth the r...", time: "Yesterday" },
-];
+function relativeTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { activePersona, setActivePersona } = useApp();
+
+  const [experts, setExperts] = useState<Expert[]>([]);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [loadingExperts, setLoadingExperts] = useState(true);
+
+  // Load experts from backend
+  useEffect(() => {
+    getExperts()
+      .then((data) => {
+        setExperts(data);
+        // Auto-select first if none selected
+        if (data.length > 0 && !activePersona) {
+          setActivePersona(data[0]);
+        }
+      })
+      .finally(() => setLoadingExperts(false));
+  }, []);
+
+  // Load thread history
+  useEffect(() => {
+    getThreads().then(setThreads);
+  }, []);
+
+  function handleSelectAdvisor(expert: Expert) {
+    setActivePersona(expert);
+  }
+
+  // Fallback initials from display_name or name
+  function getInitials(e: Expert) {
+    const name = e.display_name ?? e.name ?? "";
+    return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  }
 
   return (
     <aside className="w-64 shrink-0 flex flex-col h-full bg-white border-r border-slate-200 overflow-y-auto">
@@ -38,9 +70,7 @@ export default function Sidebar() {
         <Link
           href="/chat"
           className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            pathname.startsWith("/chat")
-              ? "bg-slate-900 text-white"
-              : "text-slate-600 hover:bg-slate-50"
+            pathname.startsWith("/chat") ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
           }`}
         >
           <MessageCircle size={16} />
@@ -49,9 +79,7 @@ export default function Sidebar() {
         <Link
           href="/overview"
           className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            pathname.startsWith("/overview")
-              ? "bg-slate-900 text-white"
-              : "text-slate-600 hover:bg-slate-50"
+            pathname.startsWith("/overview") ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
           }`}
         >
           <LayoutDashboard size={16} />
@@ -59,20 +87,26 @@ export default function Sidebar() {
         </Link>
       </nav>
 
-      {/* Recent Chats */}
+      {/* Recent Chats — from backend threads */}
       <div className="px-4 pt-4 pb-2">
         <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Chats</p>
         <div className="flex flex-col gap-0.5">
-          {RECENT_CHATS.map((chat) => (
-            <Link
-              key={chat.id}
-              href={`/chat?id=${chat.id}`}
-              className="flex flex-col px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors group"
-            >
-              <span className="text-sm text-slate-700 truncate group-hover:text-slate-900">{chat.title}</span>
-              <span className="text-xs text-slate-400">{chat.time}</span>
-            </Link>
-          ))}
+          {threads.length === 0 ? (
+            <p className="text-xs text-slate-400 px-2 py-1">No conversations yet</p>
+          ) : (
+            threads.slice(0, 6).map((t) => (
+              <Link
+                key={t.thread_id}
+                href={`/chat?thread=${t.thread_id}`}
+                className="flex flex-col px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors group"
+              >
+                <span className="text-sm text-slate-700 truncate group-hover:text-slate-900">
+                  {t.title || `Thread ${t.thread_id.slice(-6)}`}
+                </span>
+                <span className="text-xs text-slate-400">{relativeTime(t.last_active)}</span>
+              </Link>
+            ))
+          )}
         </div>
       </div>
 
@@ -97,24 +131,39 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Advisor Style */}
+      {/* Advisor Style — from backend */}
       <div className="px-4 pt-4 pb-4 mt-auto">
         <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Advisor Style</p>
-        <div className="flex flex-col gap-1">
-          {ADVISORS.map((advisor) => (
-            <button
-              key={advisor.id}
-              className={`flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors text-left w-full ${
-                advisor.id === "dave-ramsey"
-                  ? "bg-slate-50 text-slate-900 font-medium"
-                  : "text-slate-500 hover:bg-slate-50"
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full shrink-0 ${advisor.id === "dave-ramsey" ? "bg-emerald-500" : "bg-slate-300"}`} />
-              {advisor.name}
-            </button>
-          ))}
-        </div>
+
+        {loadingExperts ? (
+          <div className="flex items-center gap-2 px-2 py-2 text-xs text-slate-400">
+            <Loader2 size={12} className="animate-spin" /> Loading advisors...
+          </div>
+        ) : experts.length === 0 ? (
+          <p className="text-xs text-slate-400 px-2 py-1">Backend offline — no advisors loaded</p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {experts.map((expert) => {
+              const isActive = activePersona?.id === expert.id;
+              return (
+                <button
+                  key={expert.id}
+                  onClick={() => handleSelectAdvisor(expert)}
+                  className={`flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors text-left w-full ${
+                    isActive ? "bg-slate-50 text-slate-900 font-medium" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 text-white ${
+                    isActive ? "bg-emerald-500" : "bg-slate-300"
+                  }`}>
+                    {getInitials(expert)}
+                  </span>
+                  <span className="truncate">{expert.display_name ?? expert.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </aside>
   );

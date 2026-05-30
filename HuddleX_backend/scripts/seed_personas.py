@@ -15,7 +15,9 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
+import asyncio
+import os
+from actions.services.x_client import XClient, XApiError
 import httpx
 import yaml
 import chromadb
@@ -60,7 +62,64 @@ def load_x_posts(posts_file: str) -> list[dict]:
         return []
     return json.loads(path.read_text())
 
+async def fetch_x_posts_live(handle: str, max_results: int = 30) -> list[dict]:
+    client = XClient()
+    bundle = await client.fetch_creator_posts_by_handle(
+        handle=handle,
+        max_results=max_results,
+    )
 
+    username = bundle["profile"]["username"]
+    posts = []
+
+    for post in bundle.get("posts", []):
+        metrics = post.get("public_metrics", {}) or {}
+        post_id = post.get("id")
+
+        posts.append(
+            {
+                "id": post_id,
+                "text": post.get("text", ""),
+                "created_at": post.get("created_at"),
+                "lang": post.get("lang"),
+                "url": f"https://x.com/{username}/status/{post_id}" if post_id else None,
+                "metrics": {
+                    "like_count": metrics.get("like_count", 0),
+                    "reply_count": metrics.get("reply_count", 0),
+                    "retweet_count": metrics.get("retweet_count", 0),
+                    "quote_count": metrics.get("quote_count", 0),
+                },
+                "source": "x_api_v2",
+            }
+        )
+
+    return posts
+
+
+def load_x_posts_with_live_fallback(cfg: dict) -> list[dict]:
+    mode = os.getenv("X_API_MODE", "mock").lower()
+    max_results = int(os.getenv("X_POSTS_MAX_RESULTS", "30"))
+
+    handle = (
+        cfg.get("x_handle")
+        or cfg.get("x_username")
+        or cfg.get("handle")
+        or cfg.get("twitter_handle")
+    )
+
+    if mode == "live" and handle:
+        try:
+            print(f"INFO  Fetching live X posts for @{handle}...")
+            return asyncio.run(fetch_x_posts_live(handle, max_results=max_results))
+        except Exception as e:
+            print(f"WARNING  Live X fetch failed for @{handle}: {e}")
+            print("WARNING  Falling back to local pre-fetched X posts JSON.")
+
+    posts_file = cfg.get("x_posts_file")
+    if posts_file:
+        return load_x_posts(posts_file)
+
+    return []
 def embed_persona(persona_id: str, persona_data: dict, model: SentenceTransformer) -> int:
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
     collection = client.get_or_create_collection(f"persona_{persona_id}")
@@ -130,7 +189,7 @@ def seed_one(cfg: dict, model: SentenceTransformer) -> None:
         persona_data["wikipedia"] = {"summary": "", "key_facts": [], "last_fetched": _utc_now()}
 
     # Load X posts
-    persona_data["x_posts"] = load_x_posts(cfg["x_posts_file"])
+    persona_data["x_posts"] = load_x_posts_with_live_fallback(cfg)
     logger.info("  X posts loaded: %d", len(persona_data["x_posts"]))
 
     # Embed into Chroma

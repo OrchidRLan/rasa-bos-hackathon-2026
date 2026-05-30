@@ -18,20 +18,19 @@ POST /webhooks/rest/webhook    VoiceCenter          main chat + persona switchin
 """
 
 from __future__ import annotations
-
-import asyncio
+import os
+from actions.services.x_client import XClient, XApiError
 import json
 import os
 from pathlib import Path
 
-import httpx
-from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from pydantic import BaseModel
+from fastapi import HTTPException
 
-load_dotenv(Path(__file__).parent.parent / ".env")
-
+from actions.services.email_client import SMTPEmailClient, EmailClientError
 from actions.persona_store import list_personas_for_api, load_persona_data
 from actions.store import load_thread, load_user, save_user, list_threads
 
@@ -48,7 +47,17 @@ app.add_middleware(
 DATA_DIR = Path(os.getenv("DATA_DIR", ".data"))
 WORKER_STATE = DATA_DIR / "worker_state.json"
 
-
+@app.get("/api/x/creator/{handle}")
+async def get_x_creator(handle: str, max_results: int = 20):
+    try:
+        client = XClient()
+        data = await client.fetch_creator_posts_by_handle(
+            handle=handle,
+            max_results=max_results,
+        )
+        return data
+    except XApiError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 # ── Experts (personas) ─────────────────────────────────────────────────────────
 
 @app.get("/api/experts")
@@ -128,72 +137,6 @@ def get_thread(thread_id: str):
     return load_thread(thread_id)
 
 
-# ── Speech-to-text (Speechmatics batch API) ───────────────────────────────────
-
-_SM_BASE = "https://asr.api.speechmatics.com/v2"
-
-
-@app.post("/api/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
-    api_key = os.getenv("SPEECHMATICS_API_KEY", "")
-    if not api_key:
-        raise HTTPException(500, "SPEECHMATICS_API_KEY not configured")
-
-    language = os.getenv("SPEECHMATICS_LANGUAGE", "en")
-    operating_point = os.getenv("SPEECHMATICS_OPERATING_POINT", "enhanced")
-
-    audio_data = await file.read()
-    config_payload = json.dumps({
-        "type": "transcription",
-        "transcription_config": {
-            "language": language,
-            "operating_point": operating_point,
-        },
-    })
-    headers = {"Authorization": f"Bearer {api_key}"}
-
-    async with httpx.AsyncClient(timeout=90.0) as client:
-        submit = await client.post(
-            f"{_SM_BASE}/jobs/",
-            headers=headers,
-            files={
-                "config": (None, config_payload, "application/json"),
-                "data_file": (
-                    file.filename or "audio.webm",
-                    audio_data,
-                    file.content_type or "audio/webm",
-                ),
-            },
-        )
-        if submit.status_code != 201:
-            raise HTTPException(502, f"Speechmatics submit failed: {submit.text}")
-        job_id = submit.json()["id"]
-
-        for _ in range(60):
-            await asyncio.sleep(1)
-            poll = await client.get(f"{_SM_BASE}/jobs/{job_id}", headers=headers)
-            status = poll.json()["job"]["status"]
-            if status == "done":
-                break
-            if status in ("rejected", "deleted"):
-                raise HTTPException(502, f"Speechmatics job {status}")
-        else:
-            raise HTTPException(504, "Speechmatics transcription timed out")
-
-        tx = await client.get(
-            f"{_SM_BASE}/jobs/{job_id}/transcript?format=json-v2",
-            headers=headers,
-        )
-        results = tx.json().get("results", [])
-
-    words = [
-        r["alternatives"][0]["content"]
-        for r in results
-        if r.get("type") == "word" and r.get("alternatives")
-    ]
-    return {"transcript": " ".join(words)}
-
-
 # ── Worker status ──────────────────────────────────────────────────────────────
 
 @app.get("/worker/health")
@@ -213,3 +156,30 @@ def worker_trigger(persona_id: str | None = None):
         return {"status": "triggered", "persona_id": persona_id or "all"}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+
+
+
+class EmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+    html: str | None = None
+
+
+@app.post("/api/notifications/email/send")
+async def send_email_notification(req: EmailSendRequest):
+    try:
+        client = SMTPEmailClient()
+        result = client.send_email(
+            to=req.to,
+            subject=req.subject,
+            body=req.body,
+            html=req.html,
+        )
+
+        return result
+
+    except EmailClientError as e:
+        raise HTTPException(status_code=502, detail=str(e))

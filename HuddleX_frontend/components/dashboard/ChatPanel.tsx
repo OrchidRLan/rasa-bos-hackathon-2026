@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronDown, Loader2, Mic, MicOff, Send, Plus,
+  MessageSquarePlus, Trash2, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useApp } from "@/lib/context";
@@ -14,15 +15,23 @@ export default function ChatPanel() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [threadsOpen, setThreadsOpen] = useState(true);
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Expert dropdown
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [experts, setExperts] = useState<Expert[]>([]);
   const [switching, setSwitching] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { sessionId, activePersona, setActivePersona, latestMessages, pushMessages } = useApp();
+
+  const {
+    sessionId, activePersona, setActivePersona,
+    latestMessages, pushMessages,
+    threads, activeThreadId, createThread, switchThread, deleteThread, renameThread,
+  } = useApp();
 
   useEffect(() => {
     getExperts().then(setExperts).catch(console.error);
@@ -102,8 +111,20 @@ export default function ChatPanel() {
   return (
     <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
 
-      {/* ── Top bar: expert selector ── */}
-      <div className="shrink-0 px-4 py-3 border-b border-slate-100 flex items-center gap-3" ref={dropdownRef}>
+      {/* ── Top bar ── */}
+      <div className="shrink-0 px-3 py-3 border-b border-slate-100 flex items-center gap-2" ref={dropdownRef}>
+
+        {/* Thread sidebar toggle */}
+        <button
+          type="button"
+          onClick={() => setThreadsOpen((o) => !o)}
+          title={threadsOpen ? "Hide chats" : "Show chats"}
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 shrink-0 transition-colors"
+        >
+          {threadsOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+        </button>
+
+        {/* Expert dropdown */}
         <div className="relative flex-1">
           <button
             type="button"
@@ -154,7 +175,7 @@ export default function ChatPanel() {
 
         {/* Voice status badge */}
         {voiceEnabled && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100 shrink-0">
             {isTranscribing || sending ? (
               <Loader2 className="w-3 h-3 text-red-400 animate-spin" />
             ) : (
@@ -167,49 +188,130 @@ export default function ChatPanel() {
         )}
       </div>
 
-      {/* ── Messages ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
-        {latestMessages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-semibold" style={{ background: activePersona ? getAvatarGradient(activePersona) : "linear-gradient(135deg, #475569, #1e293b)" }}>
-              {activePersona ? getInitials(activePersona) : "AI"}
-            </div>
-            <p className="text-slate-800 font-semibold">
-              {activePersona ? `Chat with ${activePersona.display_name}` : "Select an expert to start"}
-            </p>
-            <p className="text-sm text-slate-400">Ask anything — type below or use the mic</p>
+      {/* ── Body: thread list + messages ── */}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+
+        {/* Thread list sidebar */}
+        {threadsOpen && (
+          <div className="w-52 shrink-0 border-r border-slate-100 flex flex-col bg-slate-50/60">
+            {/* New chat button */}
+            <button
+              type="button"
+              onClick={createThread}
+              className="flex items-center gap-2 mx-2 mt-2 mb-1 px-3 py-2 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+            >
+              <MessageSquarePlus className="w-4 h-4 text-blue-500 shrink-0" />
+              New chat
+            </button>
+
+            {/* Thread list */}
+            <ul className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+              {threads.map((thread) => {
+                const isActive = thread.id === activeThreadId;
+                const isRenaming = editingThreadId === thread.id;
+                return (
+                  <li key={thread.id} className="group relative">
+                    {isRenaming ? (
+                      <input
+                        ref={renameInputRef}
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onBlur={() => {
+                          const title = editingTitle.trim();
+                          if (title) renameThread(thread.id, title);
+                          setEditingThreadId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const title = editingTitle.trim();
+                            if (title) renameThread(thread.id, title);
+                            setEditingThreadId(null);
+                          } else if (e.key === "Escape") {
+                            setEditingThreadId(null);
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-xl text-sm bg-white border border-blue-300 ring-2 ring-blue-100 text-slate-900 focus:outline-none"
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => switchThread(thread.id)}
+                        onDoubleClick={() => {
+                          setEditingThreadId(thread.id);
+                          setEditingTitle(thread.title);
+                          setTimeout(() => renameInputRef.current?.select(), 0);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-sm truncate transition-colors pr-8 ${
+                          isActive
+                            ? "bg-white text-slate-900 font-medium shadow-sm border border-slate-200/80"
+                            : "text-slate-600 hover:bg-white hover:text-slate-800"
+                        }`}
+                      >
+                        {thread.title}
+                      </button>
+                    )}
+                    {!isRenaming && (
+                      <button
+                        type="button"
+                        onClick={() => deleteThread(thread.id)}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                        title="Delete chat"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        ) : (
-          latestMessages.map((msg) => {
-            if (msg.role === "system_event") return null;
-            const isUser = msg.role === "user";
-            const label = isUser ? "You" : (msg.persona_id ?? activePersona?.display_name ?? "Expert");
-            return (
-              <div key={msg.id} className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
-                <span className="text-xs text-slate-400 mb-1 px-1">{label}</span>
-                <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                  isUser
-                    ? "bg-blue-600 text-white rounded-br-md"
-                    : "bg-slate-100 text-slate-700 rounded-bl-md"
-                }`}>
-                  {msg.content}
-                </div>
+        )}
+
+        {/* Messages area */}
+        <div className="flex-1 min-w-0 overflow-y-auto px-5 py-4 space-y-4">
+          {latestMessages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-semibold" style={{ background: activePersona ? getAvatarGradient(activePersona) : "linear-gradient(135deg, #475569, #1e293b)" }}>
+                {activePersona ? getInitials(activePersona) : "AI"}
               </div>
-            );
-          })
-        )}
-
-        {/* Live transcript preview */}
-        {voiceEnabled && transcript && !isTranscribing && (
-          <div className="flex flex-col items-end">
-            <span className="text-xs text-slate-400 mb-1 px-1">You</span>
-            <div className="max-w-[75%] px-4 py-2.5 rounded-2xl rounded-br-md bg-blue-100 text-blue-700 text-sm italic">
-              {transcript}
+              <p className="text-slate-800 font-semibold">
+                {activePersona ? `Chat with ${activePersona.display_name}` : "Select an expert to start"}
+              </p>
+              <p className="text-sm text-slate-400">Ask anything — type below or use the mic</p>
             </div>
-          </div>
-        )}
+          ) : (
+            latestMessages.map((msg) => {
+              if (msg.role === "system_event") return null;
+              const isUser = msg.role === "user";
+              const label = isUser ? "You" : (msg.persona_id ?? activePersona?.display_name ?? "Expert");
+              return (
+                <div key={msg.id} className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+                  <span className="text-xs text-slate-400 mb-1 px-1">{label}</span>
+                  <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                    isUser
+                      ? "bg-blue-600 text-white rounded-br-md"
+                      : "bg-slate-100 text-slate-700 rounded-bl-md"
+                  }`}>
+                    {msg.content}
+                  </div>
+                </div>
+              );
+            })
+          )}
 
-        <div ref={bottomRef} />
+          {/* Live transcript preview */}
+          {voiceEnabled && transcript && !isTranscribing && (
+            <div className="flex flex-col items-end">
+              <span className="text-xs text-slate-400 mb-1 px-1">You</span>
+              <div className="max-w-[75%] px-4 py-2.5 rounded-2xl rounded-br-md bg-blue-100 text-blue-700 text-sm italic">
+                {transcript}
+              </div>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* ── Input bar ── */}
@@ -220,7 +322,9 @@ export default function ChatPanel() {
         >
           <button
             type="button"
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 shrink-0"
+            onClick={createThread}
+            title="New chat"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 shrink-0 transition-colors"
           >
             <Plus className="w-4 h-4" />
           </button>

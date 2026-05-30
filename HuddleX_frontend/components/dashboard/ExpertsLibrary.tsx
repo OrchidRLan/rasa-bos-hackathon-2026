@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, PanelLeftClose, Pencil, AtSign, Link2, Clock, Code2, Loader2 } from "lucide-react";
 import GlowCard from "@/components/ui/GlowCard";
+import AddExpertModal from "@/components/dashboard/AddExpertModal";
 import { getExperts, switchPersona } from "@/lib/api";
 import { useApp } from "@/lib/context";
 import type { Expert } from "@/lib/types";
@@ -34,9 +35,10 @@ export default function ExpertsLibrary({ onCollapse }: { onCollapse?: () => void
   const [experts, setExperts] = useState<Expert[]>([]);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  useEffect(() => {
-    getExperts()
+  function loadExperts() {
+    return getExperts()
       .then((data) => {
         setExperts(data);
         if (data.length > 0 && !activePersona) {
@@ -47,10 +49,18 @@ export default function ExpertsLibrary({ onCollapse }: { onCollapse?: () => void
           setActivePersona(defaultExpert);
         }
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(console.error);
+  }
+
+  useEffect(() => {
+    loadExperts().finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function handleExpertAdded(expert: Expert) {
+    setExperts((prev: Expert[]) => [...prev, expert]);
+    setActivePersona(expert);
+  }
 
   async function handleSelect(expert: Expert) {
     if (expert.id === activePersona?.id) return;
@@ -82,6 +92,8 @@ export default function ExpertsLibrary({ onCollapse }: { onCollapse?: () => void
         </div>
         <button
           type="button"
+          onClick={() => setShowAddModal(true)}
+          title="Distill a new expert"
           className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 shadow-sm"
         >
           <Plus className="w-4 h-4" />
@@ -143,6 +155,13 @@ export default function ExpertsLibrary({ onCollapse }: { onCollapse?: () => void
             );
           })}
         </div>
+      )}
+
+      {showAddModal && (
+        <AddExpertModal
+          onClose={() => setShowAddModal(false)}
+          onAdded={handleExpertAdded}
+        />
       )}
     </section>
   );

@@ -32,6 +32,7 @@ from fastapi import HTTPException
 
 from actions.services.email_client import SMTPEmailClient, EmailClientError
 from actions.persona_store import list_personas_for_api, load_persona_data
+from actions.distillation import distill_expert, make_persona_id
 from actions.store import load_thread, load_user, save_user, list_threads
 
 app = FastAPI(title="HuddleX API", version="0.1.0")
@@ -84,6 +85,40 @@ def trigger_seed(persona_id: str | None = None):
         cmd += ["--persona", persona_id]
     subprocess.Popen(cmd)
     return {"status": "seed job started", "persona_id": persona_id or "all"}
+
+
+class AddExpertRequest(BaseModel):
+    display_name: str
+    x_handle: str = ""
+    wikipedia_url: str = ""
+
+
+@app.post("/api/experts")
+def add_expert(body: AddExpertRequest):
+    """
+    女娲蒸馏: distill a new expert into the team.
+    Fetches Wikipedia, embeds into Chroma, generates LLM briefing,
+    and appends to config.yml.  Returns the new expert card.
+    """
+    if not body.display_name.strip():
+        raise HTTPException(status_code=422, detail="display_name is required")
+
+    persona_id = make_persona_id(body.display_name)
+    from actions.persona_store import load_persona_configs
+    if any(p["id"] == persona_id for p in load_persona_configs()):
+        raise HTTPException(status_code=409, detail=f"Expert '{body.display_name}' already exists")
+
+    try:
+        expert = distill_expert(
+            display_name=body.display_name.strip(),
+            x_handle=body.x_handle.strip(),
+            wikipedia_url=body.wikipedia_url.strip(),
+        )
+        return expert
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Distillation failed: {e}")
 
 
 # ── User profile ───────────────────────────────────────────────────────────────

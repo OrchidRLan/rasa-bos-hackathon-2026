@@ -1,16 +1,33 @@
-# PRD — EchoSphere
-
-> 多人格 AI 陪伴产品 · Boston Tech Week Hackathon 2026
+# PRD — HuddleX
+> 你的Experts辅助决策团队· Boston Tech Week Hackathon 2026
 
 ---
 
 ## 1. 问题陈述
 
-用户希望深度理解并"对话"自己关注的创作者/博主的思维方式，但创作者内容分散（X 帖子、Wikipedia、播客等），且创作者无法一对一回复每个粉丝。
+brainstorming的过程中，我们总会希望听到更多视角的内容。用户希望能召集各行业专家。
+深度理解并"对话"自己关注的创作者/博主的思维方式，但创作者内容分散（X 帖子、Wikipedia、播客等），且我们无法直接沟通。
 
 ## 2. 解决方案
 
 构建一个多人格 AI 伴侣，将最多 5 个博主/创作者的公开知识（X 帖子 + Wikipedia）提炼为独立 AI 人格，用户可随时通过语音或 UI 切换，并维持跨人格的持续对话记忆。
+input：
+1️⃣agent聊天者setting：读取关注的名人专家的X、维基百科。
+2️⃣用户希望agent知道的关于自己的信息、偏好
+output流程：
+1️⃣用户创建新的名人专家档案，启动蒸馏技能（ Phase 1 (6个并行Agent)
+    01-writings.md     ← 著作/文章/newsletter
+    02-conversations.md ← 播客/访谈 + download_subtitles + srt_to_transcript
+    03-expression-dna.md ← X风格/金句
+    04-external-views.md ← 他人评价/批评
+    05-decisions.md    ← 重大决策案例
+    06-timeline.md     ← 人生轨迹时间线
+  Phase 1.5: merge_research 
+  Phase 2-3: 提炼心智模型、反模式、诚实边界
+  Phase 4: quality_check）
+2️⃣AGENT有多个人格，每个人格对应一个人物的资料，用户用prompt切换人格。agent会实时读取的记忆包括：切换到的人格的知识储备、该对话框之前别的人格和用户的交流记录、用户的系统prompt
+*用户用voice/手动介绍切换
+
 
 ---
 
@@ -28,7 +45,7 @@
 
 | 功能 | 描述 |
 |------|------|
-| 人格配置 | 管理员预先配置 5 个博主人格，每个人格绑定 X 账号 + Wikipedia 条目 |
+| 人格配置 | 管理员预先配置 5 个博主人格，每个人格绑定 X 账号 + Wikipedia 条目等 |
 | 人格知识库 | 每个人格有独立 Chroma 向量集合，存储该博主的 X 帖子 + Wikipedia 摘要的 embedding |
 | 人格声音 | 每个人格绑定独立 Rime TTS voice profile |
 | 人格切换 | 用户通过 UI 按钮或语音命令（"切换到 XXX 模式"）切换，CALM flow 处理切换逻辑 |
@@ -63,7 +80,7 @@
 
 ```
 1. 用户打开 Web App
-   └─▶ 看到 5 个人格卡片（头像、姓名、今日 briefing）
+   └─▶ ①看到专家人才库 人格卡片（头像、姓名、今日 briefing等）②开过的对话框
 
 2. 用户开启一个新的对话主题
 在这条对话记录里能
@@ -82,6 +99,8 @@
 4. 用户切换人格
    └─▶ 新人格接收完整历史 + 新 system prompt
        └─▶ 新人格可以说："我看到你之前和 [前人格] 讨论了 XXX..."
+
+5. 用户说“把这个主题我们的讨论的聊天记录及summary发到我的邮箱”，调用mail的agent+ 读用户profile里的邮箱。发两份附件。
 ```
 
 ---

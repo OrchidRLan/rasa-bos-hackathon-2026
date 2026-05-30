@@ -66,6 +66,61 @@ def _format_history(messages: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _format_cognitive_framework(framework: dict, name: str) -> str:
+    """
+    Render the cognitive_framework dict (produced by distillation.py) as
+    a structured system-prompt block.  Returns "" if no framework exists.
+    """
+    if not framework or framework.get("_synthesis_error"):
+        return ""
+
+    lines: list[str] = [f"\n[COGNITIVE FRAMEWORK — How {name} Thinks]"]
+
+    models = framework.get("mental_models", [])
+    if models:
+        lines.append("Mental Models (use these lenses when reasoning):")
+        for m in models:
+            lines.append(f"  • {m.get('name', '')}: {m.get('description', '')}")
+            sig = m.get("signature_phrase", "")
+            if sig:
+                lines.append(f'    Signature: "{sig}"')
+            limit = m.get("limitation", "")
+            if limit:
+                lines.append(f"    Limitation: {limit}")
+
+    heuristics = framework.get("decision_heuristics", [])
+    if heuristics:
+        lines.append("Decision Heuristics (how you make judgments):")
+        for h in heuristics:
+            lines.append(f"  • {h}")
+
+    dna = framework.get("expression_dna", {})
+    if dna:
+        lines.append("Expression DNA (your voice — stay true to this):")
+        lines.append(f"  Tone: {dna.get('tone', '')}")
+        lines.append(f"  Style: {dna.get('sentence_style', '')}")
+        phrases = dna.get("signature_phrases", [])
+        if phrases:
+            lines.append(f"  Signature phrases: {', '.join(repr(p) for p in phrases)}")
+        arg = dna.get("argument_structure", "")
+        if arg:
+            lines.append(f"  Argument structure: {arg}")
+
+    anti = framework.get("anti_patterns", [])
+    if anti:
+        lines.append("Anti-patterns (NEVER do these — they break character):")
+        for a in anti:
+            lines.append(f"  ✗ {a}")
+
+    tensions = framework.get("core_tensions", [])
+    if tensions:
+        lines.append("Core Tensions (embody these contradictions naturally):")
+        for t in tensions:
+            lines.append(f"  ⟷ {t}")
+
+    return "\n".join(lines)
+
+
 def _build_prompt(persona_data: dict, user: dict, thread: dict,
                   chunks: list[str], user_message: str) -> str:
     ctx = user.get("user_context", {})
@@ -77,14 +132,18 @@ def _build_prompt(persona_data: dict, user: dict, thread: dict,
     style = p.get("speaking_style", "")
     briefing = p.get("briefing", {}).get("text", "")
     chunks_text = "\n---\n".join(chunks) if chunks else "(no relevant knowledge found)"
-
     interests = ", ".join(ctx.get("interests", []))
+
+    framework_block = _format_cognitive_framework(
+        p.get("cognitive_framework", {}), p["display_name"]
+    )
 
     return f"""[PERSONA DEFINITION]
 You are {p['display_name']} ({p.get('handle', '')}).
 Personality traits: {traits}.
 Speaking style: {style}
 Today's briefing (recent focus): {briefing}
+{framework_block}
 
 [USER CONTEXT]
 You are talking with {ctx.get('name') or 'the user'}, who is {ctx.get('role') or 'someone'}.
@@ -105,6 +164,7 @@ Most relevant content from your X posts and Wikipedia:
 
 [INSTRUCTION]
 Respond as {p['display_name']}. Stay in character. Be concise.
+If a cognitive framework is present above, let it shape HOW you reason, not just what you say.
 If the thread history mentions a previous persona's reply, you may acknowledge it naturally.
 Match the user's language (Chinese or English). Do not fabricate specific facts or numbers.
 

@@ -15,7 +15,6 @@ import {
 	UserPlus,
 } from "lucide-react";
 import GlowCard from "@/components/ui/GlowCard";
-import AddExpertModal from "@/components/dashboard/AddExpertModal";
 import { getExperts, switchPersona } from "@/lib/api";
 import { useApp } from "@/lib/context";
 import type { Expert } from "@/lib/types";
@@ -595,13 +594,13 @@ export default function ExpertsLibrary({
 						})}
 					</div>
 				)}
-
+				{/* 
 				{showAddModal && (
 					<AddExpertModal
 						onClose={() => setShowAddModal(false)}
 						onAdded={handleExpertAdded}
 					/>
-				)}
+				)} */}
 			</section>
 		</>
 	);

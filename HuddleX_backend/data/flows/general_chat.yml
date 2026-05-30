@@ -7,3 +7,22 @@ flows:
       knowledge from the expert's vector store (RAG) and replies in their voice.
     steps:
       - action: action_persona_chat
+
+  pattern_cannot_handle:
+    description: >
+      Catch-all for messages the command generator can't map to a flow. In a
+      persona-chat app every message should be answered by the active expert, so
+      instead of "I can't help with that" we route here to the same RAG action.
+      It either answers grounded in the expert's posts or gives an honest
+      in-character refusal (L4) — never a generic dead-end.
+    steps:
+      - action: action_persona_chat
+
+  pattern_search:
+    description: >
+      The command generator routes knowledge/lookup-style questions here
+      (Rasa's Enterprise Search). We have no separate knowledge base — the
+      expert's vector store IS the knowledge — so redirect to the same RAG
+      action instead of the default "I can't access that information" dead-end.
+    steps:
+      - action: action_persona_chat

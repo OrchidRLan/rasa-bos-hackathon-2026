@@ -70,7 +70,7 @@ export default function ChatPanel() {
         content: text.trim(),
       }]);
       try {
-        const replies = await sendMessage(sessionId, text.trim());
+        const replies = await sendMessage(sessionId, text.trim(), activePersona?.id);
         const msgs: ChatMessage[] = replies
           .filter((r) => r.text)
           .map((r, i) => ({

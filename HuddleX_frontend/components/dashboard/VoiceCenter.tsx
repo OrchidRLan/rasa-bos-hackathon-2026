@@ -64,7 +64,7 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
         content: text.trim(),
       }]);
       try {
-        const replies = await sendMessage(sessionId, text.trim());
+        const replies = await sendMessage(sessionId, text.trim(), activePersona?.id);
         const assistantMsgs: ChatMessage[] = replies
           .filter((r) => r.text)
           .map((r, i) => ({

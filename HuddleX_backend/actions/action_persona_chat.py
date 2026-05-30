@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Text
 import chromadb
 from openai import OpenAI
 from rasa_sdk import Action, Tracker
+from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
 from actions.persona_store import load_persona_data
@@ -312,7 +313,15 @@ class ActionPersonaChat(Action):
         thread_id = tracker.sender_id
         user_id = thread_id
         user_message = tracker.latest_message.get("text", "")
-        persona_id = tracker.get_slot("active_persona_id") or "sam_altman"
+        # Prefer the persona the frontend selected (sent per-message as metadata),
+        # then the active_persona_id slot, then a default. This keeps the answering
+        # persona in sync with what the UI shows, without depending on a prior switch.
+        metadata = tracker.latest_message.get("metadata") or {}
+        persona_id = (
+            metadata.get("persona_id")
+            or tracker.get_slot("active_persona_id")
+            or "elon_musk"  # last-resort default; matches the frontend's default selection
+        )
 
         persona_data = load_persona_data(persona_id)
         if persona_data is None:
@@ -371,7 +380,7 @@ class ActionPersonaChat(Action):
                     "search_query": search_query,
                 },
             )
-            return []
+            return [SlotSet("active_persona_id", persona_id)]
 
         chunks = [d for d, _ in relevant]
         chunk_ids = [i for _, i in relevant]
@@ -400,4 +409,4 @@ class ActionPersonaChat(Action):
                 "search_query": search_query,
             },
         )
-        return []
+        return [SlotSet("active_persona_id", persona_id)]

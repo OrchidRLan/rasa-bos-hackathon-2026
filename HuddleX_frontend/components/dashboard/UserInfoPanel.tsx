@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Shield, Loader2 } from "lucide-react";
+import { Shield, Loader2, PanelRightClose } from "lucide-react";
 import GlowCard from "@/components/ui/GlowCard";
 import { AtSign, Link2, Clock, Code2, CreditCard } from "lucide-react";
 import { getUser } from "@/lib/api";
@@ -30,7 +30,7 @@ function MetaRow({
   );
 }
 
-export default function UserInfoPanel() {
+export default function UserInfoPanel({ onCollapse }: { onCollapse?: () => void }) {
   const { sessionId } = useApp();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +50,18 @@ export default function UserInfoPanel() {
 
   return (
     <section className="flex flex-col h-full min-h-0">
-      <h2 className="text-lg font-semibold text-slate-900 mb-4 px-1">User Info Library</h2>
+      <div className="flex items-center justify-between mb-4 px-1">
+        <h2 className="text-lg font-semibold text-slate-900">User Info Library</h2>
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Collapse User Info Library"
+          title="Collapse User Info Library"
+          className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
+        >
+          <PanelRightClose className="w-4 h-4" />
+        </button>
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-8">

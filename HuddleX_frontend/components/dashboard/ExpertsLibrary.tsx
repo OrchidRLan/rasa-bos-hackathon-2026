@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Menu, Pencil, AtSign, Link2, Clock, Code2, Loader2 } from "lucide-react";
+import { Plus, PanelLeftClose, Pencil, AtSign, Link2, Clock, Code2, Loader2 } from "lucide-react";
 import GlowCard from "@/components/ui/GlowCard";
 import { getExperts, switchPersona } from "@/lib/api";
 import { useApp } from "@/lib/context";
@@ -29,7 +29,7 @@ function MetaRow({
   );
 }
 
-export default function ExpertsLibrary() {
+export default function ExpertsLibrary({ onCollapse }: { onCollapse?: () => void }) {
   const { sessionId, activePersona, setActivePersona } = useApp();
   const [experts, setExperts] = useState<Expert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,8 +39,13 @@ export default function ExpertsLibrary() {
     getExperts()
       .then((data) => {
         setExperts(data);
-        // Auto-select first if nothing active yet
-        if (data.length > 0 && !activePersona) setActivePersona(data[0]);
+        if (data.length > 0 && !activePersona) {
+          const defaultExpert =
+            data.find((expert) => expert.id === "elon_musk") ??
+            data.find((expert) => expert.display_name.toLowerCase() === "elon musk") ??
+            data[0];
+          setActivePersona(defaultExpert);
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -66,9 +71,12 @@ export default function ExpertsLibrary() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50 lg:hidden"
+            onClick={onCollapse}
+            aria-label="Collapse Experts Library"
+            title="Collapse Experts Library"
+            className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
           >
-            <Menu className="w-4 h-4" />
+            <PanelLeftClose className="w-4 h-4" />
           </button>
           <h2 className="text-lg font-semibold text-slate-900">Experts Library</h2>
         </div>

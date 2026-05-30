@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Loader2, Mic, MicOff, Send } from "lucide-react";
+import { ChevronDown, Loader2, Mic, MicOff, Send } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useApp } from "@/lib/context";
 import { sendMessage } from "@/lib/api";
 import type { ChatMessage } from "@/lib/types";
 
-export default function VoiceCenter() {
+export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => void }) {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -76,17 +76,23 @@ export default function VoiceCenter() {
 
       {/* Active expert */}
       {activePersona && (
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+        <button
+          type="button"
+          onClick={onExpertClick}
+          className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 text-left hover:border-blue-200 hover:bg-blue-50/40 transition-colors"
+          aria-label="Open experts list"
+        >
           <div
             className={`w-9 h-9 rounded-full bg-gradient-to-br ${activePersona.avatar_color} flex items-center justify-center text-white text-xs font-semibold shrink-0`}
           >
             {activePersona.initials}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-slate-800 truncate">{activePersona.display_name}</p>
             <p className="text-xs text-slate-400 truncate">{activePersona.subtitle}</p>
           </div>
-        </div>
+          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+        </button>
       )}
 
       {/* Voice Agent Mode toggle */}

@@ -36,6 +36,10 @@ def load_thread(thread_id: str) -> dict:
         "active_persona_id": None,
         "personas_involved": [],
         "thread_history": [],
+        # Rolling summary of turns that have scrolled out of the live window,
+        # so long conversations retain early context without unbounded tokens.
+        "thread_summary": "",
+        "summarized_count": 0,   # how many of the oldest turns are folded into the summary
     }
 
 
@@ -43,6 +47,15 @@ def save_thread(thread: dict) -> None:
     thread["last_active"] = _utc_now()
     path = _ensure(THREADS_DIR) / f"{thread['thread_id']}.json"
     path.write_text(json.dumps(thread, ensure_ascii=False, indent=2))
+
+
+def save_thread_summary(thread_id: str, summary: str, summarized_count: int) -> None:
+    """Update only the rolling-summary fields, re-reading the thread first so we
+    never clobber concurrently-appended history."""
+    thread = load_thread(thread_id)
+    thread["thread_summary"] = summary
+    thread["summarized_count"] = summarized_count
+    save_thread(thread)
 
 
 def append_message(thread_id: str, persona_id: str | None, role: str, content: str,

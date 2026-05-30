@@ -195,4 +195,5 @@ PERSONA_DIR=data/personas
 | [docs/API.md](docs/API.md) | API 端点文档 |
 | [docs/DATABASE.md](docs/DATABASE.md) | 数据结构 Schema · Chroma 结构 · System Prompt 拼装 |
 | [docs/HALLUCINATION.md](docs/HALLUCINATION.md) | 防幻觉机制：grounding prompt + 检索相关性阈值回退 |
+| [docs/CONVERSATION.md](docs/CONVERSATION.md) | 多轮对话：会话历史存储 + conversation-aware query rewriting |
 | [docs/PROJECT_META.md](docs/PROJECT_META.md) | 部署记录、API key 目录、Make 命令 |

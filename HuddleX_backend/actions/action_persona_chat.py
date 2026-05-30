@@ -27,14 +27,14 @@ from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
 
 from actions.persona_store import load_persona_data
-from actions.store import append_message, load_thread, load_user
+from actions.store import append_message, load_thread, load_user, save_thread_summary
 
 NEBIUS_BASE_URL = os.getenv("NEBIUS_BASE_URL", "https://api.tokenfactory.nebius.com/v1")
 NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
 NEBIUS_MODEL = os.getenv("NEBIUS_MODEL", "Qwen/Qwen3-235B-A22B-Instruct-2507")
 DATA_DIR = os.getenv("DATA_DIR", ".data")
 CHROMA_DIR = f"{DATA_DIR}/chroma_db"
-THREAD_HISTORY_WINDOW = 12   # last N messages injected into prompt
+THREAD_HISTORY_WINDOW = int(os.getenv("THREAD_HISTORY_WINDOW", "12"))  # last N msgs shown verbatim
 TOP_K = 5                     # Chroma retrieval count
 # L4 fallback: max L2 distance for a chunk to count as "relevant".
 # Measured on the seeded corpus: on-topic best matches land < 1.2,
@@ -61,6 +61,49 @@ def _retrieve(persona_id: str, query: str) -> tuple[list[str], list[str], list[f
     return docs, ids, dists
 
 
+def _rewrite_query(history_text: str, user_message: str) -> str:
+    """Conversation-aware query rewriting for multi-turn persona chat.
+
+    Follow-ups in a persona conversation lean on context: after the persona
+    discusses a topic, the user asks "why do you think that?", "say more", or
+    "what about for founders?" — pronouns and an elided topic that retrieve
+    poorly on their own. Using the recent thread history, rewrite the message
+    into a self-contained, topic-explicit query before hitting Chroma.
+
+    Falls back to the original message when there's no history or on any error,
+    so a rewrite failure can never block the reply. Skipped on the first turn
+    (no history) to avoid an extra LLM round-trip.
+    """
+    if not history_text.strip():
+        return user_message
+
+    prompt = (
+        "You rewrite the user's latest message into a standalone search query "
+        "for retrieving an expert's past posts.\n"
+        "Using the conversation so far, resolve pronouns (it, that, this) and "
+        "fill in the elided topic so the query stands on its own. Focus on the "
+        "TOPIC under discussion, not the speaker. Keep it short and "
+        "keyword-focused. If the message is already self-contained, return it "
+        "unchanged. Output ONLY the rewritten query.\n\n"
+        f"Conversation so far:\n{history_text}\n\n"
+        f"Latest message: {user_message}\n\n"
+        "Standalone query:"
+    )
+    try:
+        client = OpenAI(api_key=NEBIUS_API_KEY, base_url=NEBIUS_BASE_URL)
+        resp = client.chat.completions.create(
+            model=NEBIUS_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=80,
+        )
+        rewritten = (resp.choices[0].message.content or "").strip()
+        return rewritten or user_message
+    except Exception as e:  # network/LLM error — degrade gracefully
+        print(f"[persona_chat] query rewrite failed, using raw message: {e}", flush=True)
+        return user_message
+
+
 def _fallback_reply(persona_data: dict) -> str:
     """L4: honest, in-character refusal when no sufficiently relevant knowledge
     was retrieved. Returned WITHOUT an LLM call, so it can never hallucinate."""
@@ -80,6 +123,58 @@ def _format_history(messages: list[dict]) -> str:
         prefix = f"[{persona}] " if role == "assistant" else "[User] "
         lines.append(f"{prefix}{m['content']}")
     return "\n".join(lines)
+
+
+def _summarize_turns(prev_summary: str, turns: list[dict]) -> str:
+    """Fold a batch of older turns into the running conversation summary."""
+    convo = "\n".join(
+        f"[{'User' if m['role'] == 'user' else m.get('persona_id') or 'assistant'}] {m['content']}"
+        for m in turns
+    )
+    prompt = (
+        "Maintain a running summary of a conversation. Update the existing summary "
+        "to incorporate the new messages. Keep it concise (a few sentences). "
+        "Preserve concrete facts, the user's stated preferences/situation, topics "
+        "discussed, and any commitments — these must survive even after the raw "
+        "messages scroll away. Output ONLY the updated summary.\n\n"
+        f"Existing summary:\n{prev_summary or '(none yet)'}\n\n"
+        f"New messages to fold in:\n{convo}\n\n"
+        "Updated summary:"
+    )
+    client = OpenAI(api_key=NEBIUS_API_KEY, base_url=NEBIUS_BASE_URL)
+    resp = client.chat.completions.create(
+        model=NEBIUS_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+        max_tokens=256,
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
+def _maybe_update_summary(thread_id: str, thread: dict) -> None:
+    """Rolling summarization: when turns scroll past the live window, fold the
+    newly-evicted ones into thread_summary so long conversations keep early
+    context. Mutates `thread` in place and persists. Fail-safe: on error it
+    leaves summarized_count unchanged so the same turns are retried next turn
+    (never silently lost)."""
+    history = thread.get("thread_history", [])
+    summarized = thread.get("summarized_count", 0)
+    cutoff = max(0, len(history) - THREAD_HISTORY_WINDOW)  # keep last WINDOW verbatim
+    if cutoff <= summarized:
+        return  # nothing new has scrolled out of the window
+
+    new_old_turns = history[summarized:cutoff]
+    try:
+        new_summary = _summarize_turns(thread.get("thread_summary", ""), new_old_turns)
+    except Exception as e:
+        print(f"[persona_chat] summary update failed (will retry): {e}", flush=True)
+        return
+
+    thread["thread_summary"] = new_summary
+    thread["summarized_count"] = cutoff
+    save_thread_summary(thread_id, new_summary, cutoff)
+    print(f"[persona_chat] rolled {len(new_old_turns)} turns into summary "
+          f"(summarized_count={cutoff})", flush=True)
 
 
 def _format_cognitive_framework(framework: dict, name: str) -> str:
@@ -142,6 +237,12 @@ def _build_prompt(persona_data: dict, user: dict, thread: dict,
     ctx = user.get("user_context", {})
     global_summary = user.get("global_summary", {}).get("text", "")
     thread_history_text = _format_history(thread.get("thread_history", []))
+    thread_summary = thread.get("thread_summary", "")
+    earlier_block = (
+        f"\n[EARLIER IN THIS CONVERSATION]\n"
+        f"Summary of earlier turns no longer shown verbatim below:\n{thread_summary}\n"
+        if thread_summary else ""
+    )
 
     p = persona_data
     traits = ", ".join(p.get("personality_traits", []))
@@ -169,7 +270,7 @@ Background: {ctx.get('raw_description', '')}
 [GLOBAL HISTORY]
 Summary of all past conversations with this user:
 {global_summary or '(no prior conversations)'}
-
+{earlier_block}
 [THREAD HISTORY]
 Current conversation thread (most recent at bottom):
 {thread_history_text or '(start of conversation)'}
@@ -224,10 +325,27 @@ class ActionPersonaChat(Action):
         user = load_user(user_id)
         thread = load_thread(thread_id)
 
+        # Rolling summarization (DISABLED): fold turns scrolled past the live
+        # window into thread_summary so long conversations keep early context.
+        # Parked until the Rasa command generator reliably routes follow-ups to
+        # this action — see docs/CONVERSATION.md §6. Re-enable by uncommenting:
+        # _maybe_update_summary(thread_id, thread)
+
+        # Conversation history BEFORE this turn — used for both query rewriting
+        # and the answer prompt (sliding window of THREAD_HISTORY_WINDOW turns).
+        history_text = _format_history(thread.get("thread_history", []))
+
         # Persist user message before generating reply
         append_message(thread_id, None, "user", user_message)
 
-        docs, ids, dists = _retrieve(persona_id, user_message)
+        # Conversation-aware query rewriting: resolve pronouns/ellipsis in
+        # follow-ups so retrieval isn't blind to context. Retrieve with the
+        # rewritten query; the original message still drives the answer prompt.
+        search_query = _rewrite_query(history_text, user_message)
+        if search_query != user_message:
+            print(f"[persona_chat] rewrite: {user_message!r} -> {search_query!r}", flush=True)
+
+        docs, ids, dists = _retrieve(persona_id, search_query)
 
         # L4 — relevance gate: keep only chunks within MAX_DISTANCE.
         relevant = [(d, i) for d, i, dist in zip(docs, ids, dists) if dist <= MAX_DISTANCE]
@@ -250,6 +368,7 @@ class ActionPersonaChat(Action):
                     "persona_id": persona_id,
                     "retrieved_chunk_ids": [],
                     "grounded": False,
+                    "search_query": search_query,
                 },
             )
             return []
@@ -278,6 +397,7 @@ class ActionPersonaChat(Action):
                 "persona_id": persona_id,
                 "retrieved_chunk_ids": chunk_ids,
                 "grounded": True,
+                "search_query": search_query,
             },
         )
         return []

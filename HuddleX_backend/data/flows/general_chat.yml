@@ -1,9 +1,9 @@
 flows:
-  general_chat:
+  pattern_chitchat:
     description: >
-      Handle general conversation with the currently active expert persona.
-      This is the default flow for any question, message, or statement that does
-      not trigger a more specific flow. The action retrieves relevant knowledge
-      from the expert's vector store and generates a response in their voice.
+      Default handler for any free-form question, message, or statement directed
+      at the currently active expert persona. Overrides Rasa's built-in chitchat
+      pattern: instead of a generic fallback, the action retrieves relevant
+      knowledge from the expert's vector store (RAG) and replies in their voice.
     steps:
       - action: action_persona_chat

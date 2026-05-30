@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import AppShell from "@/components/shell/AppShell";
+import { AppProvider } from "@/lib/context";
 
 export const metadata: Metadata = {
-  title: "Centric",
-  description: "Your private financial advisor",
+  title: "HuddleX",
+  description: "Multi-Persona AI Companion",
 };
 
 export default function RootLayout({
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-[#F4F6FA] text-slate-900 antialiased">
-        <AppShell>{children}</AppShell>
+        <AppProvider>{children}</AppProvider>
       </body>
     </html>
   );

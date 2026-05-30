@@ -1,0 +1,15 @@
+flows:
+  switch_persona:
+    description: >
+      Switch to a different expert persona. Triggers when the user says they want
+      to talk to a specific person, switch experts, or names one of the available
+      experts (e.g. "switch to Elon", "talk to Sam Altman", "I want Paul Graham's view").
+      Also triggered by the frontend Switch button sending /switch_persona{"target_persona_id":"xxx"}.
+    steps:
+      - collect: target_persona_id
+        description: >
+          The id or name of the expert to switch to. Valid ids come from
+          data/personas/config.yml (e.g. elon_musk, sam_altman, paul_graham).
+      - action: action_switch_persona
+      - action: utter_persona_switched
+      - action: utter_can_do_something_else

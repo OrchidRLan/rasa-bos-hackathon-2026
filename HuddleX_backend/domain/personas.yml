@@ -1,0 +1,50 @@
+version: "3.1"
+
+actions:
+  - action_switch_persona
+  - action_persona_chat
+  - action_update_user_pref
+
+slots:
+  # Which expert is currently active — set by action_switch_persona
+  active_persona_id:
+    type: text
+    mappings:
+      - type: controlled
+
+  # The expert the user wants to switch to — collected by switch_persona flow
+  target_persona_id:
+    type: text
+    mappings:
+      - type: from_llm
+
+  # Free-text user info the user just shared — collected by update_user_pref flow
+  user_preference_text:
+    type: text
+    mappings:
+      - type: from_llm
+
+  # Shared slot for action return values
+  return_value:
+    type: any
+    mappings:
+      - type: controlled
+
+responses:
+  utter_ask_target_persona_id:
+    - text: "Which expert would you like to switch to?"
+
+  utter_persona_switched:
+    - text: "Switched. You're now talking to {active_persona_id}."
+
+  utter_ask_user_preference_text:
+    - text: "Got it — what would you like me to remember about you?"
+
+  utter_preference_saved:
+    - text: "Noted. I'll keep that in mind across all our conversations."
+
+  utter_can_do_something_else:
+    - text: "Anything else?"
+
+  utter_goodbye:
+    - text: "Talk soon."

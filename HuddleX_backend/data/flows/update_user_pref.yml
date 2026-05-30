@@ -1,0 +1,15 @@
+flows:
+  update_user_preference:
+    description: >
+      Save information the user shares about themselves. Triggers when the user
+      introduces themselves, describes their background, shares interests, or says
+      things like "I'm a founder", "I work in AI", "I'm interested in...",
+      "remember that I...", "my name is...", or "I want you to know...".
+    steps:
+      - collect: user_preference_text
+        description: >
+          The information the user wants the assistant to remember — their role,
+          background, interests, or any personal context they share.
+      - action: action_update_user_pref
+      - action: utter_preference_saved
+      - action: utter_can_do_something_else

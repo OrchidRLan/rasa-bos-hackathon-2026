@@ -1,0 +1,185 @@
+"""
+FastAPI REST server — run with: make run-api  (port 8080)
+
+Frontend ↔ Backend mapping
+──────────────────────────
+GET  /api/experts              ExpertsLibrary       list all 5 persona cards
+POST /api/experts/trigger-seed ExpertsLibrary       "+" button → trigger re-seed (dev only)
+GET  /api/experts/{id}         ExpertsLibrary       single expert detail
+GET  /api/user/{user_id}       UserInfoPanel        load user profile
+PUT  /api/user/{user_id}       UserInfoPanel        update user profile
+GET  /api/threads              TasksPanel           list all thread summaries
+GET  /api/threads/{thread_id}  ChatPreview          full thread with message history
+GET  /worker/health            (debug)              worker last-run status
+POST /worker/trigger           (debug / demo)       manually kick the scheduler
+
+All chat messages go through Rasa:
+POST /webhooks/rest/webhook    VoiceCenter          main chat + persona switching
+"""
+
+from __future__ import annotations
+import os
+from actions.services.x_client import XClient, XApiError
+import json
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from pydantic import BaseModel
+from fastapi import HTTPException
+
+from actions.services.email_client import SMTPEmailClient, EmailClientError
+from actions.persona_store import list_personas_for_api, load_persona_data
+from actions.store import load_thread, load_user, save_user, list_threads
+
+app = FastAPI(title="HuddleX API", version="0.1.0")
+
+# Allow the Next.js frontend (any localhost port) during development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DATA_DIR = Path(os.getenv("DATA_DIR", ".data"))
+WORKER_STATE = DATA_DIR / "worker_state.json"
+
+@app.get("/api/x/creator/{handle}")
+async def get_x_creator(handle: str, max_results: int = 20):
+    try:
+        client = XClient()
+        data = await client.fetch_creator_posts_by_handle(
+            handle=handle,
+            max_results=max_results,
+        )
+        return data
+    except XApiError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+# ── Experts (personas) ─────────────────────────────────────────────────────────
+
+@app.get("/api/experts")
+def get_experts():
+    """ExpertsLibrary: loads all persona cards with briefing and metadata."""
+    return list_personas_for_api()
+
+
+@app.get("/api/experts/{persona_id}")
+def get_expert(persona_id: str):
+    """ExpertsLibrary detail / VoiceCenter context."""
+    data = load_persona_data(persona_id)
+    if data is None:
+        raise HTTPException(404, f"Persona '{persona_id}' not found or not seeded yet")
+    return data
+
+
+@app.post("/api/experts/trigger-seed")
+def trigger_seed(persona_id: str | None = None):
+    """Dev helper: kick seed_personas for one or all personas."""
+    import subprocess, sys
+    cmd = [sys.executable, "scripts/seed_personas.py"]
+    if persona_id:
+        cmd += ["--persona", persona_id]
+    subprocess.Popen(cmd)
+    return {"status": "seed job started", "persona_id": persona_id or "all"}
+
+
+# ── User profile ───────────────────────────────────────────────────────────────
+
+@app.get("/api/user/{user_id}")
+def get_user(user_id: str):
+    """UserInfoPanel: user profile, interests, global summary."""
+    return load_user(user_id)
+
+
+class UserContextUpdate(BaseModel):
+    name: str = ""
+    role: str = ""
+    interests: list[str] = []
+    raw_description: str = ""
+
+
+@app.put("/api/user/{user_id}")
+def update_user(user_id: str, body: UserContextUpdate):
+    """UserInfoPanel: save edited user profile (non-chat path)."""
+    user = load_user(user_id)
+    ctx = user["user_context"]
+    if body.name:
+        ctx["name"] = body.name
+    if body.role:
+        ctx["role"] = body.role
+    if body.interests:
+        existing = set(ctx.get("interests", []))
+        existing.update(body.interests)
+        ctx["interests"] = list(existing)
+    if body.raw_description:
+        ctx["raw_description"] = body.raw_description
+    from actions.store import _utc_now
+    ctx["updated_at"] = _utc_now()
+    user["user_context"] = ctx
+    save_user(user)
+    return user
+
+
+# ── Threads ────────────────────────────────────────────────────────────────────
+
+@app.get("/api/threads")
+def get_threads():
+    """TasksPanel: lightweight list of all conversation threads."""
+    return list_threads()
+
+
+@app.get("/api/threads/{thread_id}")
+def get_thread(thread_id: str):
+    """ChatPreview: full thread including message history."""
+    return load_thread(thread_id)
+
+
+# ── Worker status ──────────────────────────────────────────────────────────────
+
+@app.get("/worker/health")
+def worker_health():
+    """Debug: check last worker run per persona."""
+    if WORKER_STATE.exists():
+        return json.loads(WORKER_STATE.read_text())
+    return {"status": "no state yet — run make seed-personas first"}
+
+
+@app.post("/worker/trigger")
+def worker_trigger(persona_id: str | None = None):
+    """Debug / demo: manually trigger a worker refresh cycle."""
+    try:
+        from actions.worker.scheduler import run_refresh
+        run_refresh(persona_id)
+        return {"status": "triggered", "persona_id": persona_id or "all"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+
+
+
+class EmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+    html: str | None = None
+
+
+@app.post("/api/notifications/email/send")
+async def send_email_notification(req: EmailSendRequest):
+    try:
+        client = SMTPEmailClient()
+        result = client.send_email(
+            to=req.to,
+            subject=req.subject,
+            body=req.body,
+            html=req.html,
+        )
+
+        return result
+
+    except EmailClientError as e:
+        raise HTTPException(status_code=502, detail=str(e))

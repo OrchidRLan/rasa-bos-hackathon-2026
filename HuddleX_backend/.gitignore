@@ -1,0 +1,12 @@
+.env
+.venv/
+.data/
+models/
+.rasa/
+results/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+*.egg-info/
+dist/
+build/

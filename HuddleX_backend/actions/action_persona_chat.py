@@ -1,0 +1,168 @@
+"""
+action_persona_chat
+────────────────────
+Called by:  general_chat flow  (default fallback for all messages)
+Frontend:   VoiceCenter mic button  →  POST /webhooks/rest/webhook  (voice path)
+            VoiceCenter keyboard    →  POST /webhooks/rest/webhook  (text path)
+            ChatPreview             →  read-only (polls GET /api/threads/{id})
+
+Flow:
+  1. Resolve active persona + load Chroma collection
+  2. Load thread history + user global summary
+  3. Query Chroma top-5 chunks for current user message
+  4. Assemble system prompt (5 blocks, see DATABASE.md §6)
+  5. Call Nebius LLM via OpenAI-compatible client
+  6. Persist message pair to thread JSON
+  7. Return text reply + custom payload with retrieved chunk ids
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any, Dict, List, Text
+
+import chromadb
+from openai import OpenAI
+from rasa_sdk import Action, Tracker
+from rasa_sdk.executor import CollectingDispatcher
+
+from actions.persona_store import load_persona_data
+from actions.store import append_message, load_thread, load_user
+
+NEBIUS_BASE_URL = os.getenv("NEBIUS_BASE_URL", "https://api.tokenfactory.nebius.com/v1")
+NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
+NEBIUS_MODEL = os.getenv("NEBIUS_MODEL", "Qwen/Qwen3-235B-A22B-Instruct-2507")
+DATA_DIR = os.getenv("DATA_DIR", ".data")
+CHROMA_DIR = f"{DATA_DIR}/chroma_db"
+THREAD_HISTORY_WINDOW = 12   # last N messages injected into prompt
+TOP_K = 5                     # Chroma retrieval count
+
+
+def _get_collection(persona_id: str):
+    client = chromadb.PersistentClient(path=CHROMA_DIR)
+    try:
+        return client.get_collection(f"persona_{persona_id}")
+    except Exception:
+        return None
+
+
+def _retrieve(persona_id: str, query: str) -> tuple[list[str], list[str]]:
+    collection = _get_collection(persona_id)
+    if collection is None:
+        return [], []
+    results = collection.query(query_texts=[query], n_results=TOP_K)
+    docs = results["documents"][0] if results["documents"] else []
+    ids = results["ids"][0] if results["ids"] else []
+    return docs, ids
+
+
+def _format_history(messages: list[dict]) -> str:
+    lines = []
+    for m in messages[-THREAD_HISTORY_WINDOW:]:
+        role = m["role"]
+        persona = m.get("persona_id") or ""
+        prefix = f"[{persona}] " if role == "assistant" else "[User] "
+        lines.append(f"{prefix}{m['content']}")
+    return "\n".join(lines)
+
+
+def _build_prompt(persona_data: dict, user: dict, thread: dict,
+                  chunks: list[str], user_message: str) -> str:
+    ctx = user.get("user_context", {})
+    global_summary = user.get("global_summary", {}).get("text", "")
+    thread_history_text = _format_history(thread.get("thread_history", []))
+
+    p = persona_data
+    traits = ", ".join(p.get("personality_traits", []))
+    style = p.get("speaking_style", "")
+    briefing = p.get("briefing", {}).get("text", "")
+    chunks_text = "\n---\n".join(chunks) if chunks else "(no relevant knowledge found)"
+
+    interests = ", ".join(ctx.get("interests", []))
+
+    return f"""[PERSONA DEFINITION]
+You are {p['display_name']} ({p.get('handle', '')}).
+Personality traits: {traits}.
+Speaking style: {style}
+Today's briefing (recent focus): {briefing}
+
+[USER CONTEXT]
+You are talking with {ctx.get('name') or 'the user'}, who is {ctx.get('role') or 'someone'}.
+Interests: {interests}.
+Background: {ctx.get('raw_description', '')}
+
+[GLOBAL HISTORY]
+Summary of all past conversations with this user:
+{global_summary or '(no prior conversations)'}
+
+[THREAD HISTORY]
+Current conversation thread (most recent at bottom):
+{thread_history_text or '(start of conversation)'}
+
+[RETRIEVED KNOWLEDGE]
+Most relevant content from your X posts and Wikipedia:
+{chunks_text}
+
+[INSTRUCTION]
+Respond as {p['display_name']}. Stay in character. Be concise.
+If the thread history mentions a previous persona's reply, you may acknowledge it naturally.
+Match the user's language (Chinese or English). Do not fabricate specific facts or numbers.
+
+User: {user_message}
+{p['display_name']}:"""
+
+
+class ActionPersonaChat(Action):
+    def name(self) -> Text:
+        return "action_persona_chat"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        thread_id = tracker.sender_id
+        user_id = thread_id
+        user_message = tracker.latest_message.get("text", "")
+        persona_id = tracker.get_slot("active_persona_id") or "sam_altman"
+
+        persona_data = load_persona_data(persona_id)
+        if persona_data is None:
+            dispatcher.utter_message(
+                text=f"I don't have knowledge loaded for {persona_id} yet. "
+                "Run `make seed-personas` first."
+            )
+            return []
+
+        user = load_user(user_id)
+        thread = load_thread(thread_id)
+
+        # Persist user message before generating reply
+        append_message(thread_id, None, "user", user_message)
+
+        chunks, chunk_ids = _retrieve(persona_id, user_message)
+        prompt = _build_prompt(persona_data, user, thread, chunks, user_message)
+
+        client = OpenAI(api_key=NEBIUS_API_KEY, base_url=NEBIUS_BASE_URL)
+        response = client.chat.completions.create(
+            model=NEBIUS_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=512,
+        )
+        reply = response.choices[0].message.content.strip()
+
+        # Persist assistant reply
+        append_message(thread_id, persona_id, "assistant", reply,
+                       retrieved_chunks=chunk_ids)
+
+        dispatcher.utter_message(
+            text=reply,
+            custom={
+                "type": "persona_reply",
+                "persona_id": persona_id,
+                "retrieved_chunk_ids": chunk_ids,
+            },
+        )
+        return []

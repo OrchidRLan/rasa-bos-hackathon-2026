@@ -294,7 +294,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
             submit = await client.post(
                 "https://asr.api.speechmatics.com/v2/jobs/",
                 headers={"Authorization": f"Bearer {api_key}"},
-                files={"data_file": (file.filename or "audio.webm", audio_bytes, "audio/webm")},
+                files={"data_file": (file.filename or "audio.webm", audio_bytes, file.content_type or "audio/webm")},
                 data={"config": json.dumps(config)},
             )
             if submit.status_code not in (200, 201):

@@ -7,6 +7,7 @@ import {
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useApp } from "@/lib/context";
 import { getExperts, sendMessage, switchPersona } from "@/lib/api";
+import { getAvatarGradient, getInitials } from "@/lib/expertUtils";
 import type { ChatMessage, Expert } from "@/lib/types";
 
 export default function ChatPanel() {
@@ -113,8 +114,8 @@ export default function ChatPanel() {
           >
             {activePersona ? (
               <>
-                <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${activePersona.avatar_color} flex items-center justify-center text-white text-[10px] font-semibold shrink-0`}>
-                  {switching ? <Loader2 className="w-3 h-3 animate-spin" /> : activePersona.initials}
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0" style={{ background: getAvatarGradient(activePersona) }}>
+                  {switching ? <Loader2 className="w-3 h-3 animate-spin" /> : getInitials(activePersona)}
                 </div>
                 <span className="text-sm font-semibold text-slate-800">{activePersona.display_name}</span>
               </>
@@ -135,8 +136,8 @@ export default function ChatPanel() {
                       onClick={() => handleSelectExpert(expert)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-blue-50 transition-colors ${selected ? "bg-blue-50/60" : ""}`}
                     >
-                      <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${expert.avatar_color} flex items-center justify-center text-white text-xs font-semibold shrink-0`}>
-                        {expert.initials}
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0" style={{ background: getAvatarGradient(expert) }}>
+                        {getInitials(expert)}
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-slate-800 truncate">{expert.display_name}</p>
@@ -170,8 +171,8 @@ export default function ChatPanel() {
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
         {latestMessages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
-            <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${activePersona?.avatar_color ?? "from-slate-600 to-slate-800"} flex items-center justify-center text-white text-xl font-semibold`}>
-              {activePersona?.initials ?? "AI"}
+            <div className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-semibold" style={{ background: activePersona ? getAvatarGradient(activePersona) : "linear-gradient(135deg, #475569, #1e293b)" }}>
+              {activePersona ? getInitials(activePersona) : "AI"}
             </div>
             <p className="text-slate-800 font-semibold">
               {activePersona ? `Chat with ${activePersona.display_name}` : "Select an expert to start"}

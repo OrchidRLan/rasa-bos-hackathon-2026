@@ -5,6 +5,7 @@ import { ChevronDown, Loader2, Mic, MicOff, Send } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useApp } from "@/lib/context";
 import { getExperts, sendMessage, switchPersona } from "@/lib/api";
+import { getAvatarGradient, getInitials } from "@/lib/expertUtils";
 import type { ChatMessage, Expert } from "@/lib/types";
 
 export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => void }) {
@@ -123,9 +124,10 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
           {activePersona ? (
             <>
               <div
-                className={`w-9 h-9 rounded-full bg-gradient-to-br ${activePersona.avatar_color} flex items-center justify-center text-white text-xs font-semibold shrink-0`}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                style={{ background: getAvatarGradient(activePersona) }}
               >
-                {switching ? <Loader2 className="w-4 h-4 animate-spin" /> : activePersona.initials}
+                {switching ? <Loader2 className="w-4 h-4 animate-spin" /> : getInitials(activePersona)}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-slate-800 truncate">{activePersona.display_name}</p>
@@ -158,9 +160,10 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
                     }`}
                   >
                     <div
-                      className={`w-8 h-8 rounded-full bg-gradient-to-br ${expert.avatar_color} flex items-center justify-center text-white text-xs font-semibold shrink-0`}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0"
+                      style={{ background: getAvatarGradient(expert) }}
                     >
-                      {expert.initials}
+                      {getInitials(expert)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-slate-800 truncate">{expert.display_name}</p>

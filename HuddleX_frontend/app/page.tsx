@@ -1,55 +1,37 @@
 "use client";
 
 import { useState } from "react";
-import type { ElementType } from "react";
-import { BookUser, UsersRound } from "lucide-react";
+import Image from "next/image";
+import { BookUser, UsersRound, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import ExpertsLibrary from "@/components/dashboard/ExpertsLibrary";
-import VoiceCenter from "@/components/dashboard/VoiceCenter";
 import UserInfoPanel from "@/components/dashboard/UserInfoPanel";
 import TasksPanel from "@/components/dashboard/TasksPanel";
-import ChatPreview, { BottomNav } from "@/components/dashboard/ChatPreview";
+import ChatPanel from "@/components/dashboard/ChatPanel";
+import { BottomNav } from "@/components/dashboard/ChatPreview";
 
-function CollapsedLibraryButton({
-  side,
-  label,
-  icon: Icon,
-  onClick,
-}: {
-  side: "left" | "right";
-  label: string;
-  icon: ElementType;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={`Open ${label}`}
-      title={label}
-      className={`h-full min-h-[92px] w-full rounded-2xl border border-slate-200/80 bg-white shadow-sm flex lg:flex-col items-center justify-center gap-2 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/40 transition-colors ${
-        side === "right" ? "lg:order-last" : ""
-      }`}
-    >
-      <Icon className="w-5 h-5" />
-      <span className="hidden lg:block text-[11px] font-semibold uppercase tracking-widest [writing-mode:vertical-rl]">
-        {label}
-      </span>
-      <span className="lg:hidden text-xs font-semibold uppercase tracking-widest">{label}</span>
-    </button>
-  );
-}
+type SidebarTab = "experts" | "user";
 
 export default function HomePage() {
-  const [expertsCollapsed, setExpertsCollapsed] = useState(false);
-  const [userInfoCollapsed, setUserInfoCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<SidebarTab>("experts");
 
   return (
-    <div className="min-h-screen bg-[#F4F6FA] flex flex-col">
+    <div className="h-screen bg-[#F4F6FA] flex flex-col overflow-hidden">
+      {/* Header */}
       <header className="shrink-0 border-b border-slate-200/80 bg-white/80 backdrop-blur px-6 py-4">
-        <div className="max-w-[1440px] mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">HuddleX</h1>
-            <p className="text-sm text-slate-500">Persistent Autonomous Voice Agent</p>
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Image
+              src="/HuddleX_logo_black.png"
+              alt="HuddleX logo"
+              width={36}
+              height={36}
+              className="shrink-0"
+            />
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">HuddleX</h1>
+              <p className="text-sm text-slate-500">Persistent Autonomous Voice Agent</p>
+            </div>
           </div>
           <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -58,45 +40,96 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-[1440px] w-full mx-auto p-4 lg:p-6 pb-24 lg:pb-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-full min-h-[calc(100vh-120px)]">
-          <aside className={`${expertsCollapsed ? "lg:col-span-1" : "lg:col-span-4"} min-h-[84px] lg:min-h-0`}>
-            {expertsCollapsed ? (
-              <CollapsedLibraryButton
-                side="left"
-                label="Experts"
-                icon={UsersRound}
-                onClick={() => setExpertsCollapsed(false)}
-              />
-            ) : (
-              <ExpertsLibrary onCollapse={() => setExpertsCollapsed(true)} />
-            )}
-          </aside>
+      {/* Body */}
+      <main className="flex-1 min-h-0 max-w-[1600px] w-full mx-auto p-4 lg:p-6 pb-20 lg:pb-6 flex gap-5">
 
-          <div className="lg:col-span-3 min-h-[200px] lg:min-h-0 rounded-2xl border border-slate-200/80 bg-white shadow-sm p-5 lg:p-6">
-            <VoiceCenter onExpertClick={() => setExpertsCollapsed(false)} />
+        {/* ── Left Sidebar ── */}
+        {sidebarCollapsed ? (
+          /* Collapsed strip */
+          <div className="hidden lg:flex flex-col items-center gap-3 w-14 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(false)}
+              title="Expand sidebar"
+              className="w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50 hover:text-blue-600"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab("experts"); setSidebarCollapsed(false); }}
+              title="Experts"
+              className="w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-200"
+            >
+              <UsersRound className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab("user"); setSidebarCollapsed(false); }}
+              title="User Info"
+              className="w-10 h-10 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-200"
+            >
+              <BookUser className="w-4 h-4" />
+            </button>
           </div>
+        ) : (
+          /* Expanded sidebar */
+          <aside className="hidden lg:flex flex-col w-80 xl:w-96 shrink-0 rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+            {/* Tab bar */}
+            <div className="flex items-center border-b border-slate-100 px-3 pt-3 gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveTab("experts")}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                  activeTab === "experts"
+                    ? "text-blue-600 border-b-2 border-blue-600 -mb-px bg-blue-50/50"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <UsersRound className="w-4 h-4" />
+                Experts
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("user")}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                  activeTab === "user"
+                    ? "text-blue-600 border-b-2 border-blue-600 -mb-px bg-blue-50/50"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <BookUser className="w-4 h-4" />
+                User Info
+              </button>
 
-          <aside className={`${expertsCollapsed ? "lg:col-span-8" : "lg:col-span-5"} min-h-0 flex flex-col`}>
-            <div className={`${userInfoCollapsed ? "flex justify-end mb-5" : ""}`}>
-              {!userInfoCollapsed && (
-                <UserInfoPanel onCollapse={() => setUserInfoCollapsed(true)} />
-              )}
-              {userInfoCollapsed && (
-                <div className="w-full lg:w-[72px]">
-                  <CollapsedLibraryButton
-                    side="right"
-                    label="User Info"
-                    icon={BookUser}
-                    onClick={() => setUserInfoCollapsed(false)}
-                  />
-                </div>
+              {/* Collapse button pushed to right */}
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(true)}
+                title="Collapse sidebar"
+                className="ml-auto w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 hover:text-slate-600 mb-1"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Tab content */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-5">
+              {activeTab === "experts" ? (
+                <ExpertsLibrary onCollapse={undefined} />
+              ) : (
+                <UserInfoPanel onCollapse={undefined} />
               )}
             </div>
-            <TasksPanel />
-            <ChatPreview />
           </aside>
+        )}
+
+        {/* ── Main: unified chat panel ── */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <TasksPanel />
+          <ChatPanel />
         </div>
+
       </main>
 
       <BottomNav />

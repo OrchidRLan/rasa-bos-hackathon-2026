@@ -1,4 +1,4 @@
-# DATABASE — EchoSphere
+# DATABASE — HuddleX
 
 > 所有数据存储均为本地文件（hackathon 阶段），无需外部数据库服务。
 
@@ -7,28 +7,57 @@
 ## 1. 文件目录结构
 
 ```
+data/
+└── personas/
+    ├── config.yml                    # 专家配置（id, x_handle, wikipedia_url, avatar_color…）
+    └── raw/
+        └── {id}_tweets.json          # 预抓取的 X 帖子（mock 模式使用）
+
 .data/
-├── personas/                    # 人格原始数据 (JSON)
+├── personas/                         # 蒸馏后的完整专家数据
 │   ├── elon_musk.json
 │   ├── sam_altman.json
-│   ├── paul_graham.json
-│   ├── persona_d.json
-│   └── persona_e.json
-├── threads/                     # 对话线程历史，按 thread_id 分文件
-│   ├── {thread_id}.json         # 线程内跨人格完整消息记录
+│   ├── richard_feynman.json          # 用户蒸馏后自动生成
 │   └── ...
-├── users/                       # 用户画像 + 全局历史索引
-│   └── {user_id}.json           # user_context + 所有线程索引 + 全局摘要
-├── chroma_db/                   # Chroma 向量库（自动生成）
+├── threads/                          # 对话线程历史，按 thread_id 分文件
+│   └── {thread_id}.json
+├── users/                            # 用户画像 + 全局摘要索引
+│   └── {user_id}.json
+├── chroma_db/                        # Chroma 向量库（自动生成）
 │   ├── persona_elon_musk/
 │   ├── persona_sam_altman/
-│   └── ...
-└── worker_state.json            # Always-On Worker 状态记录
+│   └── persona_richard_feynman/      # 蒸馏专家自动创建
+└── worker_state.json                 # Always-On Worker 状态
 ```
 
 ---
 
-## 2. 人格数据 Schema
+## 2. 专家配置 Schema
+
+**文件**: `data/personas/config.yml`
+
+```yaml
+personas:
+  - id: elon_musk
+    display_name: Elon Musk
+    x_handle: "@elonmusk"
+    x_posts_file: data/personas/raw/elon_musk_tweets.json
+    wikipedia_url: https://en.wikipedia.org/wiki/Elon_Musk
+    rime_voice_id: ""
+    avatar_color: from-slate-700 to-slate-900
+    initials: EM
+  # 用户蒸馏后追加新条目
+  - id: richard_feynman
+    display_name: Richard Feynman
+    x_handle: "@richard_feynman"
+    wikipedia_url: https://en.wikipedia.org/wiki/Richard_Feynman
+    avatar_color: from-rose-600 to-pink-900
+    initials: RF
+```
+
+---
+
+## 3. 专家数据 Schema
 
 **文件**: `.data/personas/{persona_id}.json`
 
@@ -37,44 +66,72 @@
   "id": "elon_musk",
   "display_name": "Elon Musk",
   "handle": "@elonmusk",
-  "description": "Tech entrepreneur, CEO of Tesla, SpaceX, and xAI",
+  "description": "",
   "wikipedia_url": "https://en.wikipedia.org/wiki/Elon_Musk",
-  "rime_voice_id": "voice_elon_001",
-  "avatar_path": "assets/personas/elon.jpg",
-  "personality_traits": ["direct", "first-principles", "provocative", "visionary"],
-  "speaking_style": "Talks in short punchy sentences. Uses memes. References physics and engineering.",
+  "rime_voice_id": "",
+  "personality_traits": ["First Principles Thinking", "Asymmetric Risk Taking"],
+  "speaking_style": "Direct, provocative. Short punchy sentences.",
 
   "wikipedia": {
     "summary": "Elon Reeve Musk is a businessman known for...",
-    "key_facts": [
-      "Born June 28, 1971, in Pretoria, South Africa",
-      "Founded SpaceX in 2002",
-      "Acquired Twitter (now X) in 2022"
-    ],
-    "last_fetched": "2026-05-01T00:00:00Z"
+    "key_facts": [],
+    "last_fetched": "2026-05-29T06:00:00Z"
   },
 
   "x_posts": [
     {
       "id": "tweet_001",
       "text": "The thing I find most surprising about AI progress is...",
-      "date": "2026-05-10T14:32:00Z",
-      "likes": 82000,
-      "reposts": 14000,
-      "topics": ["AI", "technology"]
-    },
-    {
-      "id": "tweet_002",
-      "text": "Manufacturing is the hardest part of any hardware startup",
-      "date": "2026-05-08T09:15:00Z",
-      "likes": 45000,
-      "reposts": 8000,
-      "topics": ["manufacturing", "startups"]
+      "created_at": "2026-05-10T14:32:00Z",
+      "metrics": { "like_count": 82000, "retweet_count": 14000 },
+      "source": "x_api_v2"
     }
   ],
 
+  "cognitive_framework": {
+    "mental_models": [
+      {
+        "name": "First Principles Thinking",
+        "description": "Decomposes every problem to physical limits before engineering",
+        "signature_phrase": "What does physics say is possible?",
+        "limitation": "Underweights institutional knowledge and social friction"
+      }
+    ],
+    "decision_heuristics": [
+      "Optimize for the physically possible, not the historically precedented",
+      "If the obvious thing hasn't been tried, try it"
+    ],
+    "expression_dna": {
+      "tone": "Direct, provocative",
+      "sentence_style": "Short punchy declarations, occasional meme, no hedging",
+      "signature_phrases": ["Obviously", "This is insane", "Actually..."],
+      "argument_structure": "State conclusion first, derive from first principles",
+      "humor_style": "Deadpan absurdism, self-referential memes"
+    },
+    "anti_patterns": [
+      "Never hedges with 'I think maybe possibly'",
+      "Never defers to authority as a reason"
+    ],
+    "honest_boundaries": [
+      "Cannot simulate private communications or internal company decisions",
+      "Post-2025 developments are outside training knowledge"
+    ],
+    "core_tensions": [
+      "Believes in human potential but often treats humans as execution problems"
+    ],
+    "_dimension_notes": {
+      "01-writings": "...",
+      "02-conversations": "...",
+      "03-expression-dna": "...",
+      "04-external-views": "...",
+      "05-decisions": "...",
+      "06-timeline": "..."
+    },
+    "generated_at": "2026-05-29T10:30:00Z"
+  },
+
   "briefing": {
-    "text": "近期 Elon 主要关注：xAI Grok 3 发布后的市场反应，特斯拉 FSD v14 进展，以及对 AI 监管的看法。",
+    "text": "近期 Elon 主要关注：xAI Grok 4 发布后的市场反应...",
     "generated_at": "2026-05-29T06:00:00Z",
     "source_post_count": 342
   }
@@ -85,36 +142,31 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | string | 唯一标识，用于 Chroma collection 命名和 slot |
-| `display_name` | string | 展示名 |
-| `handle` | string | X 账号 |
-| `rime_voice_id` | string | Rime TTS voice profile ID |
-| `personality_traits` | string[] | 用于 system prompt 注入 |
-| `speaking_style` | string | 风格描述，注入 system prompt |
-| `wikipedia.summary` | string | Wikipedia 摘要全文 |
-| `x_posts` | object[] | 预存 X 帖子列表 |
-| `x_posts[].topics` | string[] | 帖子主题标签（用于检索过滤） |
+| `id` | string | 唯一标识，Chroma collection 命名用 |
+| `personality_traits` | string[] | 从 `cognitive_framework.mental_models` 名称提取，注入 system prompt |
+| `speaking_style` | string | 从 `expression_dna.tone + sentence_style` 生成，注入 system prompt |
+| `cognitive_framework` | object | 女娲蒸馏 Phase 2-3 产出，预置专家无此字段 |
+| `cognitive_framework.mental_models` | object[] | 3-5 个心智模型，每个含 limitation |
+| `cognitive_framework.expression_dna` | object | 表达风格 DNA |
+| `cognitive_framework.anti_patterns` | string[] | 专家绝不会做的事 ≥4 条 |
+| `cognitive_framework.honest_boundaries` | string[] | 此 AI 角色无法可靠模拟的内容 ≥3 条 |
+| `cognitive_framework._dimension_notes` | object | 6 维度调研原始笔记，仅用于溯源 |
 | `briefing.text` | string | Always-On Worker 生成的今日摘要 |
-| `briefing.generated_at` | ISO8601 | 最后生成时间 |
 
 ---
 
-## 3. 记忆两层模型
+## 4. 记忆两层模型
 
-记忆分两层独立统计，人格每次回复时两层都注入 system prompt：
-
-| 层级 | 范围 | 存储 | 注入方式 |
-|------|------|------|---------|
-| **线程历史** | 当前对话线程内所有消息（跨人格） | `.data/threads/{thread_id}.json` | 最近 N 条原文 |
-| **全局历史** | 用户所有线程的压缩摘要 | `.data/users/{user_id}.json` | LLM 生成摘要（~100字） |
+| 层级 | 范围 | 存储位置 | system prompt 注入方式 |
+|------|------|---------|---------------------|
+| **线程历史** | 当前对话线程内所有消息（跨人格共享） | `.data/threads/{thread_id}.json` | 最近 12 条原文 |
+| **全局历史** | 用户所有线程的 LLM 压缩摘要 | `.data/users/{user_id}.json` | ~100 字摘要 |
 
 ---
 
-### 3a. 线程数据 Schema
+## 5. 线程数据 Schema
 
 **文件**: `.data/threads/{thread_id}.json`
-
-> 每个对话线程一个文件。线程内历史跨人格共享——切换人格后新人格能看到本线程完整记录。
 
 ```json
 {
@@ -141,7 +193,7 @@
       "persona_id": "elon_musk",
       "role": "assistant",
       "content": "对齐问题比大多数人想象的要难得多...",
-      "retrieved_chunks": ["chunk_id_042", "chunk_id_107"]
+      "retrieved_chunks": ["wiki_summary", "tweet_001"]
     },
     {
       "id": "msg_003",
@@ -149,39 +201,24 @@
       "persona_id": "sam_altman",
       "role": "system_event",
       "content": "[PERSONA_SWITCH: elon_musk → sam_altman]"
-    },
-    {
-      "id": "msg_004",
-      "timestamp": "2026-05-29T10:15:30Z",
-      "persona_id": "sam_altman",
-      "role": "assistant",
-      "content": "我看到你之前和 Elon 聊了对齐问题，从 OpenAI 的角度来看...",
-      "retrieved_chunks": ["chunk_id_218"]
     }
   ]
 }
 ```
 
-**字段说明**
-
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `thread_id` | string | 唯一线程 ID，与 Rasa `sender_id` 对应 |
-| `title` | string | 线程标题（首条消息后 LLM 自动生成，或用户命名） |
-| `active_persona_id` | string | 当前激活人格 |
-| `personas_involved` | string[] | 本线程出现过的人格列表 |
-| `thread_history[].persona_id` | string | 该消息发生时的激活人格 |
+| `thread_id` | string | 与 Rasa `sender_id` 对应 |
+| `personas_involved` | string[] | 本线程出现过的所有专家 |
 | `thread_history[].role` | enum | `user` / `assistant` / `system_event` |
 | `thread_history[].retrieved_chunks` | string[] | RAG 命中的 chunk ID（调试用） |
 | `thread_history[].voice_input` | bool | 是否来自语音输入 |
 
 ---
 
-### 3b. 用户画像 Schema（全局）
+## 6. 用户画像 Schema
 
 **文件**: `.data/users/{user_id}.json`
-
-> 跨所有线程的用户信息。`global_summary` 由 Always-On Worker 或线程结束时触发 LLM 压缩生成，避免 token 爆炸。
 
 ```json
 {
@@ -204,74 +241,44 @@
       "last_active": "2026-05-29T11:30:00Z",
       "personas_involved": ["elon_musk", "sam_altman"],
       "message_count": 18
-    },
-    {
-      "thread_id": "thread_xyz456",
-      "title": "如何做 A 轮 pitch",
-      "created_at": "2026-05-28T15:00:00Z",
-      "last_active": "2026-05-28T16:20:00Z",
-      "personas_involved": ["paul_graham"],
-      "message_count": 32
     }
   ],
 
   "global_summary": {
-    "text": "Alex 是 AI SaaS 创业者，正在融 A 轮。过去与 Elon 深入讨论了 AGI 对齐问题，与 Sam 探讨了 OpenAI 的安全策略，与 PG 反复打磨了 pitch 叙事。核心关注：技术路线选择、投资人沟通、产品 PMF。",
+    "text": "Alex 是 AI SaaS 创业者，正在融 A 轮。...",
     "generated_at": "2026-05-29T06:00:00Z",
-    "thread_count": 2,
-    "total_messages": 50
+    "thread_count": 2
   }
 }
 ```
 
-**字段说明**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `user_context` | object | 用户自我描述，所有线程共享 |
-| `threads` | object[] | 所有线程的轻量索引（不含消息体） |
-| `global_summary.text` | string | LLM 压缩的跨线程摘要，注入 system prompt |
-| `global_summary.generated_at` | ISO8601 | 最后压缩时间 |
-
 ---
 
-## 4. Chroma 向量库结构
+## 7. Chroma 向量库结构
 
-每个人格对应一个独立 Chroma collection：
+**Collection 命名**: `persona_{persona_id}`
 
-**Collection 命名**: `persona_{persona_id}`（例：`persona_elon_musk`）
+| Document ID | 来源 | metadata.type |
+|-------------|------|---------------|
+| `tweet_{post_id}` | X 帖子文本 | `tweet` |
+| `wiki_summary` | Wikipedia `extract` 字段 | `wikipedia` |
+| `wiki_fact_{hash}` | Wikipedia key facts | `wikipedia` |
+| `framework_summary` | cognitive_framework 平铺文本 | `cognitive_framework` |
 
-**Document 结构**（每条 X 帖子 / Wikipedia 段落是一个 doc）：
-
-```python
-collection.add(
-    ids=["tweet_001", "tweet_002", "wiki_001"],
-    documents=[
-        "The thing I find most surprising about AI progress is...",
-        "Manufacturing is the hardest part of any hardware startup",
-        "Elon Musk was born on June 28, 1971..."
-    ],
-    metadatas=[
-        {"type": "tweet", "date": "2026-05-10", "topics": "AI,technology", "likes": 82000},
-        {"type": "tweet", "date": "2026-05-08", "topics": "manufacturing,startups", "likes": 45000},
-        {"type": "wikipedia", "section": "Early life"}
-    ]
-)
-```
-
-**检索示例**
+`framework_summary` 仅蒸馏专家有（预置专家无 cognitive_framework）。
 
 ```python
-results = collection.query(
-    query_texts=["AI safety challenges"],
-    n_results=5,
-    where={"type": "tweet"}   # 可选：只检索帖子
+# 检索示例
+collection.query(
+    query_texts=["quantum mechanics teaching"],
+    n_results=5
+    # 不过滤 type，同时检索 tweets + wiki + framework
 )
 ```
 
 ---
 
-## 5. Worker 状态 Schema
+## 8. Worker 状态 Schema
 
 **文件**: `.data/worker_state.json`
 
@@ -286,12 +293,6 @@ results = collection.query(
       "last_embed_at": "2026-05-29T06:00:00Z",
       "doc_count": 342,
       "last_briefing_at": "2026-05-29T06:01:30Z"
-    },
-    "sam_altman": {
-      "embed_status": "ok",
-      "last_embed_at": "2026-05-29T06:00:00Z",
-      "doc_count": 218,
-      "last_briefing_at": "2026-05-29T06:02:10Z"
     }
   }
 }
@@ -299,47 +300,54 @@ results = collection.query(
 
 ---
 
-## 6. System Prompt 拼装逻辑
+## 9. System Prompt 拼装逻辑
 
-`ActionPersonaChat` 在每次对话时动态拼装以下 5 个 block，两层记忆均注入：
+`action_persona_chat.py` `_build_prompt()` 动态拼装 6 个 block：
 
 ```
 [PERSONA DEFINITION]
-你是 {display_name}（{handle}）。
-你的性格特点：{personality_traits}。
-你的说话风格：{speaking_style}。
-今日你关注的话题（briefing）：{briefing.text}
+You are {display_name} ({handle}).
+Personality traits: {personality_traits}.    ← from mental_models names
+Speaking style: {speaking_style}             ← from expression_dna
+Today's briefing: {briefing.text}
+
+[COGNITIVE FRAMEWORK — How {name} Thinks]    ← 仅蒸馏专家有此 block
+Mental Models:
+  • {name}: {description}
+    Signature: "{signature_phrase}"
+    Limitation: {limitation}
+Decision Heuristics:
+  • {heuristic}
+Expression DNA:
+  Tone: ...  Style: ...  Signature phrases: ...
+Anti-patterns (NEVER do these):
+  ✗ {anti_pattern}
+Core Tensions:
+  ⟷ {tension}
 
 [USER CONTEXT]
-你正在和 {user_context.name} 对话，他/她是 {user_context.role}。
-他/她的兴趣：{user_context.interests}。
-背景：{user_context.raw_description}
+{name}, {role}, interests: {interests}
+{raw_description}
 
-[GLOBAL HISTORY]                          ← 全局层：跨所有线程的压缩摘要
-以下是这位用户过去与各人格对话的总体情况：
-{global_summary.text}                     // ~100 字，Always-On Worker 维护
+[GLOBAL HISTORY]
+{global_summary.text}                        ← Always-On Worker 维护，~100字
 
-[THREAD HISTORY]                          ← 线程层：当前线程完整消息（原文）
-以下是本次对话线程的记录（包含你和其他人格与用户的交流）：
-{thread_history[-12:]}                    // 最近 12 条，保证当前线程连贯性
+[THREAD HISTORY]
+{thread_history[-12:]}                       ← 最近 12 条原文
 
 [RETRIEVED KNOWLEDGE]
-以下是与当前问题最相关的你的观点/背景（来自 X 帖子和 Wikipedia）：
-{top_k_chunks}                            // top-5，Chroma 检索
-
-[INSTRUCTION]
-请以 {display_name} 的身份回答用户问题。保持一致的人格特征。
-如果 [THREAD HISTORY] 中有其他人格的发言，你可以自然地引用或接续。
-回答用中文或英文，与用户语言一致。不要虚构具体事实。
+{top_5_chunks}                               ← Chroma top-5 (tweets+wiki+framework)
 ```
 
-**两层记忆的 token 预算参考**
+**Token 预算参考**
 
-| Block | 预估 token | 说明 |
-|-------|-----------|------|
-| Persona Definition | ~150 | 固定，每人格不同 |
+| Block | 预估 tokens | 说明 |
+|-------|------------|------|
+| Persona Definition | ~150 | 固定 |
+| Cognitive Framework | ~400 | 仅蒸馏专家有；预置专家此 block 为空 |
 | User Context | ~100 | 用户自我描述 |
-| Global History | ~150 | LLM 压缩摘要，控制在 100 字内 |
-| Thread History (12条) | ~800 | 最大变量，可按模型上限调整 |
-| Retrieved Knowledge (top-5) | ~600 | 5 条 tweet/wiki 段落 |
-| **合计** | **~1800** | 留足空间给回复生成 |
+| Global History | ~150 | LLM 压缩摘要 |
+| Thread History (12条) | ~800 | 最大变量 |
+| Retrieved Knowledge (top-5) | ~600 | tweets + wiki + framework chunks |
+| **合计（蒸馏专家）** | **~2200** | — |
+| **合计（预置专家）** | **~1800** | 无 Cognitive Framework block |

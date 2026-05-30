@@ -1,72 +1,227 @@
 # PRD — HuddleX
-> 你的Experts辅助决策团队· Boston Tech Week Hackathon 2026
+> 你的 AI 专家决策团队 · Boston Tech Week Hackathon 2026
 
 ---
 
 ## 1. 问题陈述
 
-brainstorming的过程中，我们总会希望听到更多视角的内容。用户希望能召集各行业专家。
-深度理解并"对话"自己关注的创作者/博主的思维方式，但创作者内容分散（X 帖子、Wikipedia、播客等），且我们无法直接沟通。
+Brainstorming 和决策过程中，用户希望获得不同领域、不同认知框架的反馈。但现实存在三个问题：
+
+1. **优质创作者内容分散** — 观点散落在 X、Wikipedia、播客、newsletter 中，难以系统整理
+2. **无法直接互动** — 用户只能被动阅读，不能围绕自己的具体问题与这些专家对话
+3. **跨视角讨论缺少连续记忆** — 在不同 AI 角色间切换时需要反复交代背景
+
+---
 
 ## 2. 解决方案
 
-构建一个多人格 AI 伴侣，将最多 5 个博主/创作者的公开知识（X 帖子 + Wikipedia）提炼为独立 AI 人格，用户可随时通过语音或 UI 切换，并维持跨人格的持续对话记忆。
-input：
-1️⃣agent聊天者setting：读取关注的名人专家的X、维基百科。
-2️⃣用户希望agent知道的关于自己的信息、偏好
-output流程：
-1️⃣用户创建新的名人专家档案，启动蒸馏技能（ Phase 1 (6个并行Agent)
-    01-writings.md     ← 著作/文章/newsletter
-    02-conversations.md ← 播客/访谈 + download_subtitles + srt_to_transcript
-    03-expression-dna.md ← X风格/金句
-    04-external-views.md ← 他人评价/批评
-    05-decisions.md    ← 重大决策案例
-    06-timeline.md     ← 人生轨迹时间线
-  Phase 1.5: merge_research 
-  Phase 2-3: 提炼心智模型、反模式、诚实边界
-  Phase 4: quality_check）
-2️⃣AGENT有多个人格，每个人格对应一个人物的资料，用户用prompt切换人格。agent会实时读取的记忆包括：切换到的人格的知识储备、该对话框之前别的人格和用户的交流记录、用户的系统prompt
-*用户用voice/手动介绍切换
+HuddleX 构建一个多人格 AI 专家团队。每个专家人格基于公开资料构建，包含：
 
+- 独立知识库（X 帖子 + Wikipedia embedding 进 Chroma）
+- **认知框架**（心智模型 / 决策启发式 / 表达 DNA / 反模式 / 诚实边界）
+- 独立 Rime TTS 声音
+
+### 2.1 专家来源
+
+#### 预置专家
+系统预置 5 位专家（通过 `seed_personas.py` 初始化）：Elon Musk、Sam Altman、Paul Graham、Naval Ravikant、Jensen Huang
+
+#### 用户蒸馏（女娲蒸馏技术）
+用户可自行添加任意公众人物。蒸馏流程分 4 个阶段：
+
+| Phase | 内容 | 实现 |
+|-------|------|------|
+| Phase 1 | 抓取 Wikipedia 原文 | `_fetch_wikipedia()` |
+| Phase 1.5 | 6 维度并行 LLM 调研（著作 / 对话 / 表达DNA / 他者视角 / 决策 / 时间线） | `_run_all_dimensions()` — ThreadPoolExecutor(max_workers=6) |
+| Phase 2-3 | LLM 合成 → `cognitive_framework` JSON（心智模型 / 启发式 / 反模式 / 诚实边界） | `_synthesize_framework()` |
+| Phase 4 | 质量检查 + Chroma embedding + 写入 config.yml | `_quality_check()` + `_embed()` |
+
+### 2.2 对话记忆
+
+| 层级 | 范围 | 存储 | 注入方式 |
+|------|------|------|---------|
+| 线程历史 | 当前线程内所有消息（跨人格共享） | `.data/threads/{thread_id}.json` | 最近 12 条原文 |
+| 全局历史 | 用户所有线程的压缩摘要 | `.data/users/{user_id}.json` | LLM 生成摘要（~100字） |
 
 ---
 
 ## 3. 目标用户
 
-- 重度内容消费者，关注科技/商业/创意领域博主
-- 希望测试想法、获取特定视角的创业者/学生
-- 想用 AI 陪伴但对单一人格感到无聊的用户
+- **主要用户**：重度内容消费者、科技/商业领域创业者、做 hackathon/side project 的 builder
+- **次要用户**：产品经理、投资人、自媒体创作者、研究者
 
 ---
 
 ## 4. 核心功能
 
-### 4.1 人格系统
+### 4.1 专家人格系统
 
 | 功能 | 描述 |
 |------|------|
-| 人格配置 | 管理员预先配置 5 个博主人格，每个人格绑定 X 账号 + Wikipedia 条目等 |
-| 人格知识库 | 每个人格有独立 Chroma 向量集合，存储该博主的 X 帖子 + Wikipedia 摘要的 embedding |
-| 人格声音 | 每个人格绑定独立 Rime TTS voice profile |
-| 人格切换 | 用户通过 UI 按钮或语音命令（"切换到 XXX 模式"）切换，CALM flow 处理切换逻辑 |
+| Expert Library | 展示所有专家卡片：头像、姓名、briefing、X handle、Wikipedia 链接 |
+| 女娲蒸馏 | 用户通过 "+" 按钮输入姓名/X handle/Wikipedia URL，触发完整 4-Phase 蒸馏流程，30-45 秒完成 |
+| 认知框架注入 | 蒸馏生成的 `cognitive_framework` 作为 `[COGNITIVE FRAMEWORK]` block 注入 system prompt |
+| 人格切换 | UI 按钮 或 语音命令"切换到 XXX"，CALM flow 处理切换 |
+| 独立 Chroma 集合 | 每个专家（含用户蒸馏的）有独立向量库，蒸馏完成后立即可对话 |
 
-### 4.2 对话记忆
+### 4.2 对话与记忆
 
 | 功能 | 描述 |
 |------|------|
-| 跨人格共享历史 | 所有人格共享同一对话线程，切换后新人格能看到之前对话 |
-| 用户画像 | 用户可通过语音/文字告诉系统关于自己的信息和偏好，存入 system prompt |
-| 会话持久化 | 对话历史持久化到 JSON，重启后保留 |
+| 跨人格共享历史 | 同一线程内所有专家共享消息记录，新专家接续时可引用前一个专家的发言 |
+| 用户画像 | 用户可通过语音/文字介绍自己，存入 `user_context` |
+| 全局摘要 | Always-On Worker 压缩跨线程记忆（~100字）注入 system prompt |
+| 持久化 | 对话历史 JSON 持久化，重启后保留 |
 
 ### 4.3 语音交互
 
 | 功能 | 描述 |
 |------|------|
-| 语音输入 | Speechmatics ASR 实时识别用户语音 |
-| 语音输出 | Rime TTS 合成当前人格的回复 |
-| 语音切换 | 用户说"切换到 [人格名]"触发 CALM 切换 flow |
+| 语音输入 | Speechmatics ASR（WebSocket）实时识别 |
+| 语音输出 | Rime TTS 合成当前专家声音 |
+| 语音切换 | 用户说"切换到 [专家名]"触发 CALM switch_persona flow |
 
-### 4.4 Always-On # PRD — HuddleX
+### 4.4 Always-On 后台层
+
+| 功能 | 描述 |
+|------|------|
+| 定时刷新 | APScheduler 每 6 小时重新 embed 各专家最新内容 |
+| Briefing 生成 | 每次刷新后 LLM 生成今日 briefing（~100字摘要） |
+| Health Check | `/worker/health` 端点记录最后运行时间和各专家 embed 状态 |
+
+### 4.5 邮件导出
+
+用户说"把这次讨论发到我的邮箱"，系统生成结构化 summary + 完整聊天记录，通过 SMTP 发送两份附件。
+
+---
+
+## 5. 用户流程
+
+```
+1. 打开 Web App
+   → 看到专家库（5 个预置 + 用户已蒸馏的专家）
+   → 看到最近对话线程
+
+2. [可选] 蒸馏新专家
+   → 点击 "+"
+   → 填写姓名、X handle（可选）、Wikipedia URL（自动建议）
+   → 30-45 秒蒸馏完成
+   → 新专家立即出现在列表，可开始对话
+
+3. 开启对话
+   → 选择专家 → CALM 激活 switch_persona flow
+   → system prompt 注入：[人格定义] + [认知框架] + [用户画像] + [线程历史] + [RAG 检索]
+
+4. 对话（文字 / 语音）
+   → Speechmatics ASR → Rasa CALM → action_persona_chat → Chroma RAG → Nebius LLM → Rime TTS
+
+5. 切换专家
+   → 新专家继承完整线程历史
+   → 新专家可引用前一个专家的发言
+
+6. 邮件导出
+   → "把这次讨论发到我的邮箱" → LLM 生成 summary → SMTP 发送
+```
+
+---
+
+## 6. 系统架构概览
+
+```
+Browser (Next.js 15)
+  ├── ExpertsLibrary  → GET /api/experts  → FastAPI :8080
+  ├── AddExpertModal  → POST /api/experts → distillation.py (4-phase)
+  ├── VoiceCenter     → POST /webhooks/rest/webhook → Rasa CALM :5005
+  ├── UserInfoPanel   → GET/PUT /api/user/{id}
+  ├── TasksPanel      → GET /api/threads
+  └── ChatPreview     → GET /api/threads/{id}
+
+FastAPI :8080 (api_server.py)
+  ├── persona_store.py  ← config.yml + .data/personas/*.json
+  ├── distillation.py   ← 女娲蒸馏引擎
+  ├── store.py          ← .data/threads/*.json + .data/users/*.json
+  └── worker/scheduler.py ← APScheduler（Always-On）
+
+Rasa CALM :5005
+  └── action_persona_chat.py ← ChromaDB RAG + Nebius LLM
+
+ChromaDB (.data/chroma_db/)
+  └── persona_{id}/  ← tweets + wiki_summary + framework_summary
+```
+
+---
+
+## 7. 非功能需求
+
+| 指标 | 目标 |
+|------|------|
+| ASR → LLM → TTS 全链路 | < 3 秒 |
+| 人格切换延迟 | < 500ms |
+| 女娲蒸馏时间 | 30-45 秒（6 并行 LLM calls + synthesis） |
+| 知识刷新周期 | 可配置，默认 6 小时 |
+| Demo 并发用户 | 1-5 人 |
+| 文字模式 | 语音不可用时必须完全可用 |
+
+---
+
+## 8. Hackathon 范围
+
+### In Scope
+
+- 预置 5 个专家人格
+- 用户自定义蒸馏新专家（女娲蒸馏，Method B）
+- Expert Library 页面
+- 语音输入 + 语音输出
+- 人格切换（UI + 语音）
+- 跨人格共享线程记忆
+- 用户画像记忆
+- Chroma RAG 检索
+- 认知框架注入 system prompt
+- Always-On Worker 知识刷新 + briefing 演示
+- 邮件导出
+
+### Out of Scope (v1)
+
+- 实时 X API 抓取（预存 JSON 替代）
+- 用户账号系统
+- 移动端原生 App
+- 多用户实时协作
+- 生产级语音克隆
+- 云端长期存储 / 付费系统
+
+---
+
+## 9. 成功指标
+
+### Hackathon
+
+- [ ] 5 个预置专家正常切换对话
+- [ ] 用户可蒸馏新专家并立即对话
+- [ ] 跨人格线程历史正确传递
+- [ ] 语音输入输出正常工作
+- [ ] Always-On Worker 可演示
+- [ ] 邮件导出完整聊天记录
+- [ ] 完整 Demo 流程 ≤ 3 分钟
+
+### 产品质量
+
+- [ ] 不同专家回复风格有明显差异（认知框架生效）
+- [ ] 专家能引用前一个专家的发言
+- [ ] 系统不伪造具体事实
+- [ ] 文字模式在语音失败时完全可用
+
+---
+
+## 10. 核心产品原则
+
+HuddleX 不是在冒充真实人物。它基于公开信息模拟"受专家启发的视角"，帮助用户从多个认知框架对比分析问题。
+
+每个专家人格都是 AI 生成的视角模型，不代表真实人物的实际观点。
+
+
+
+# EN
+# PRD — HuddleX
 
 > Your AI Expert Council for Better Decisions
 > Boston Tech Week Hackathon 2026
@@ -737,69 +892,3 @@ It is designed to simulate expert-inspired perspectives based on public informat
 
 The product should always make clear that each expert persona is an AI-generated perspective model, not the actual person.
 
-
-| 功能 | 描述 |
-|------|------|
-| 知识刷新 | APScheduler 定时（默认每 6 小时）读取预存 JSON，更新各人格 Chroma 集合 |
-| Briefing 生成 | 每次刷新后，用 LLM 为每个人格生成当日 briefing（近期关注话题摘要） |
-| 健康检查 | Worker 提供 `/worker/health` 端点，记录最后一次成功运行时间 |
-
----
-
-## 5. 用户流程
-
-```
-1. 用户打开 Web App
-   └─▶ ①看到专家人才库 人格卡片（头像、姓名、今日 briefing等）②开过的对话框
-
-2. 用户开启一个新的对话主题
-在这条对话记录里能
-点击/说出选择某个人格
-   └─▶ CALM flow 激活 switch_persona
-       └─▶ Action server 加载该人格的 Chroma 集合 + briefing + 此对话框用户和其他人格的对话记录
-           └─▶ 对话框激活，system prompt 注入：
-               [人格知识] + [用户偏好] + [跨人格历史]
-
-3. 用户开始对话（文字 / 语音）
-   └─▶ Speechmatics ASR 转文字（语音路径）
-       └─▶ Rasa CALM 处理意图
-           └─▶ Nebius LLM 生成回复（RAG 检索该人格知识）
-               └─▶ Rime TTS 合成语音 + 文字回复展示
-
-4. 用户切换人格
-   └─▶ 新人格接收完整历史 + 新 system prompt
-       └─▶ 新人格可以说："我看到你之前和 [前人格] 讨论了 XXX..."
-
-5. 用户说“把这个主题我们的讨论的聊天记录及summary发到我的邮箱”，调用mail的agent+ 读用户profile里的邮箱。发两份附件。
-```
-
----
-
-## 6. 非功能需求
-
-| 指标 | 目标 |
-|------|------|
-| 语音延迟 | ASR → TTS 全链路 < 3s |
-| 人格切换延迟 | < 500ms（Chroma 集合切换） |
-| 知识刷新周期 | 可配置，默认 6 小时 |
-| 并发用户 | Hackathon demo 阶段：1-5 用户 |
-
----
-
-## 7. Hackathon 范围外（v1 不做）
-
-- 实时 X API 抓取（用预存 JSON 替代）
-- 用户自定义添加博主
-- 多语言支持（默认中/英双语）
-- 用户账号系统
-- 移动端 App
-
----
-
-## 8. 成功指标（Hackathon）
-
-- [ ] 5 个人格可正常切换且对话
-- [ ] 跨人格历史正确传递
-- [ ] 语音输入/输出正常工作
-- [ ] Always-On Worker 可演示知识刷新
-- [ ] Demo 时间 ≤ 3 分钟内完整展示核心流程

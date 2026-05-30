@@ -24,10 +24,16 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
+from actions.services.file_service import (
+    FileServiceError,
+    get_file_metadata,
+    get_file_text,
+    list_files,
+    save_upload,
+)
 from actions.services.email_client import SMTPEmailClient, EmailClientError
 from actions.persona_store import list_personas_for_api, load_persona_data
 from actions.distillation import distill_expert, make_persona_id
@@ -73,7 +79,45 @@ def get_expert(persona_id: str):
         raise HTTPException(404, f"Persona '{persona_id}' not found or not seeded yet")
     return data
 
+@app.post("/api/files/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    user_id: str = Form("default"),
+):
+    try:
+        metadata = await save_upload(file=file, user_id=user_id)
+        return {
+            "status": "ok",
+            "file": metadata,
+        }
+    except FileServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
+
+@app.get("/api/files")
+def get_files(user_id: str | None = None):
+    return {
+        "items": list_files(user_id=user_id),
+        "count": len(list_files(user_id=user_id)),
+    }
+
+
+@app.get("/api/files/{file_id}")
+def get_file(file_id: str, include_text: bool = False):
+    metadata = get_file_metadata(file_id)
+
+    if metadata is None:
+        raise HTTPException(status_code=404, detail=f"File not found: {file_id}")
+
+    result = dict(metadata)
+
+    if include_text:
+        try:
+            result["text"] = get_file_text(file_id)
+        except FileServiceError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    return result
 @app.post("/api/experts/trigger-seed")
 def trigger_seed(persona_id: str | None = None):
     """Dev helper: kick seed_personas for one or all personas."""

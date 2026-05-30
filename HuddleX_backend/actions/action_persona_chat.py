@@ -26,7 +26,7 @@ from openai import OpenAI
 from rasa_sdk import Action, Tracker
 from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
-
+from actions.services.file_service import get_file_text, get_file_metadata, FileServiceError
 from actions.persona_store import load_persona_data
 from actions.store import append_message, load_thread, load_user, save_thread_summary
 
@@ -232,9 +232,75 @@ def _format_cognitive_framework(framework: dict, name: str) -> str:
 
     return "\n".join(lines)
 
+def _extract_file_ids_from_tracker(tracker) -> list[str]:
+    file_ids: list[str] = []
+
+    latest_message = tracker.latest_message or {}
+
+    metadata = latest_message.get("metadata") or {}
+    if isinstance(metadata.get("file_ids"), list):
+        file_ids.extend(metadata["file_ids"])
+
+    slot_file_ids = tracker.get_slot("attached_file_ids")
+    if isinstance(slot_file_ids, list):
+        file_ids.extend(slot_file_ids)
+
+    seen = set()
+    unique_file_ids = []
+    for file_id in file_ids:
+        if file_id and file_id not in seen:
+            seen.add(file_id)
+            unique_file_ids.append(file_id)
+
+    return unique_file_ids
+
+
+def _build_uploaded_file_context(
+    file_ids: list[str],
+    max_chars_per_file: int = 4000,
+) -> str:
+    if not file_ids:
+        return ""
+
+    sections = []
+
+    for file_id in file_ids:
+        try:
+            metadata = get_file_metadata(file_id) or {}
+            text = get_file_text(file_id)
+
+            filename = metadata.get("filename", file_id)
+            extracted_chars = metadata.get("extracted_chars", len(text))
+
+            clipped_text = text[:max_chars_per_file]
+
+            if len(text) > max_chars_per_file:
+                clipped_text += "\n\n[File truncated for prompt length.]"
+
+            sections.append(
+                f"""[Uploaded File]
+file_id: {file_id}
+filename: {filename}
+extracted_chars: {extracted_chars}
+
+content:
+{clipped_text}
+"""
+            )
+
+        except FileServiceError as e:
+            sections.append(
+                f"""[Uploaded File Error]
+file_id: {file_id}
+error: {e}
+"""
+            )
+
+    return "\n\n".join(sections).strip()
+
 
 def _build_prompt(persona_data: dict, user: dict, thread: dict,
-                  chunks: list[str], user_message: str) -> str:
+                  chunks: list[str], user_message: str, uploaded_file_context: str = "") -> str:
     ctx = user.get("user_context", {})
     global_summary = user.get("global_summary", {}).get("text", "")
     thread_history_text = _format_history(thread.get("thread_history", []))
@@ -280,24 +346,98 @@ Current conversation thread (most recent at bottom):
 Most relevant content from your X posts and Wikipedia:
 {chunks_text}
 
+[UPLOADED FILES]
+Files attached by the user in this message:
+{uploaded_file_context or '(no uploaded files attached)'}
+
 [INSTRUCTION]
 Respond as {p['display_name']}, in the first person and in character. Be concise.
 
 GROUNDING RULES (these override staying in character):
-- Any specific fact, number, date, event, product, or claim MUST come from
+- Any specific fact, number, date, event, product, or claim about the persona MUST come from
   [RETRIEVED KNOWLEDGE] above. Do NOT invent or guess specifics — no made-up
   policies, statistics, quotes, launches, or figures.
+- Facts about the user's uploaded files MUST come from [UPLOADED FILES].
+- If [UPLOADED FILES] contains relevant user-provided documents, use them as primary context for questions about the user's situation.
 - You may speak in your characteristic voice and express your known opinions,
-  but factual specifics must trace back to the retrieved posts.
-- If [RETRIEVED KNOWLEDGE] does not actually address the question, say so
-  honestly in your own voice (e.g. that you haven't posted about it) instead of
-  fabricating an answer.
+  but factual specifics must trace back to retrieved posts or uploaded files.
+- If [RETRIEVED KNOWLEDGE] and [UPLOADED FILES] do not actually address the question, say so
+  honestly in your own voice instead of fabricating an answer.
 If a cognitive framework is present above, let it shape HOW you reason, not just what you say.
 If the thread history mentions a previous persona's reply, you may acknowledge it naturally.
 Match the user's language (Chinese or English).
 
 User: {user_message}
 {p['display_name']}:"""
+
+def extract_file_ids_from_tracker(tracker) -> list[str]:
+    """
+    Support several ways of passing file_ids:
+    1. metadata.file_ids from frontend/Rasa REST
+    2. latest_message.entities
+    3. slot: attached_file_ids
+    """
+    file_ids: list[str] = []
+
+    latest_message = tracker.latest_message or {}
+
+    metadata = latest_message.get("metadata") or {}
+    if isinstance(metadata.get("file_ids"), list):
+        file_ids.extend(metadata["file_ids"])
+
+    for entity in latest_message.get("entities", []) or []:
+        if entity.get("entity") in {"file_id", "attached_file_id"}:
+            value = entity.get("value")
+            if value:
+                file_ids.append(value)
+
+    slot_file_ids = tracker.get_slot("attached_file_ids")
+    if isinstance(slot_file_ids, list):
+        file_ids.extend(slot_file_ids)
+
+    # de-duplicate while preserving order
+    seen = set()
+    unique = []
+    for fid in file_ids:
+        if fid and fid not in seen:
+            seen.add(fid)
+            unique.append(fid)
+
+    return unique
+
+def build_uploaded_file_context(file_ids: list[str], max_chars_per_file: int = 4000) -> str:
+    if not file_ids:
+        return ""
+
+    sections = []
+
+    for file_id in file_ids:
+        try:
+            metadata = get_file_metadata(file_id) or {}
+            text = get_file_text(file_id)
+
+            filename = metadata.get("filename", file_id)
+            preview_text = text[:max_chars_per_file]
+
+            sections.append(
+                f"""[Uploaded File]
+file_id: {file_id}
+filename: {filename}
+
+content:
+{preview_text}
+"""
+            )
+
+        except FileServiceError as e:
+            sections.append(
+                f"""[Uploaded File Error]
+file_id: {file_id}
+error: {e}
+"""
+            )
+
+    return "\n\n".join(sections).strip()
 
 
 class ActionPersonaChat(Action):
@@ -384,7 +524,20 @@ class ActionPersonaChat(Action):
 
         chunks = [d for d, _ in relevant]
         chunk_ids = [i for _, i in relevant]
-        prompt = _build_prompt(persona_data, user, thread, chunks, user_message)
+        print("DEBUG latest_message:", tracker.latest_message)
+        file_ids = _extract_file_ids_from_tracker(tracker)
+        print("DEBUG file_ids:", file_ids)
+
+        uploaded_file_context = _build_uploaded_file_context(file_ids)
+        print("DEBUG uploaded_file_context:", uploaded_file_context[:800])
+        prompt = _build_prompt(
+            persona_data=persona_data,
+            user=user,
+            thread=thread,
+            chunks=chunks,
+            user_message=user_message,
+            uploaded_file_context=uploaded_file_context,
+        )
 
         client = OpenAI(api_key=NEBIUS_API_KEY, base_url=NEBIUS_BASE_URL)
         response = client.chat.completions.create(

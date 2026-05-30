@@ -110,9 +110,18 @@ retrieval found the relevant posts instead of being blind to the pronoun.
 
 - **Sliding window** — `THREAD_HISTORY_WINDOW = 12` (last N messages) caps the
   context fed to both the rewriter and the answer prompt, bounding tokens/latency.
-- **Summarization (deferred)** — `global_summary` exists in the user store but is
-  not auto-generated. For very long sessions, compressing turns older than the
-  window into a running summary would preserve context without unbounded tokens.
+- **Rolling thread summary (wired but disabled)** — the machinery for compressing
+  turns that scroll past the live window into a running `thread_summary` is built:
+  `_maybe_update_summary()` / `_summarize_turns()` in `action_persona_chat.py` and
+  `save_thread_summary()` in `store.py` (threads carry `thread_summary` +
+  `summarized_count` fields). The call in `ActionPersonaChat.run()` is **commented
+  out**, parked until the Rasa command generator reliably routes follow-ups to this
+  action — so for now only the last `THREAD_HISTORY_WINDOW` turns are seen and
+  older context is dropped, not summarized. The framework-fallback prompt already
+  renders `thread_summary` when present, so re-enabling is a one-line uncomment.
+- **Global summary (deferred)** — `global_summary` exists in the user store but is
+  not auto-generated. For very long, cross-thread sessions, an LLM-compressed
+  per-user summary would preserve context without unbounded tokens.
 - **Store backend (deferred)** — local JSON is fine for the hackathon. For
   production, back the store with Redis (TTL auto-expiry) or a relational DB
   (durable history).
@@ -126,8 +135,9 @@ retrieval found the relevant posts instead of being blind to the pronoun.
 - **Fail-safe** — rewrite errors degrade to the raw message; a bad rewrite can
   never drop a reply.
 - **Interaction with grounding** — better queries mean the L4 relevance gate
-  (see [HALLUCINATION.md](HALLUCINATION.md)) refuses *less* often on legitimate
-  follow-ups, because retrieval now gets a query it can actually match.
+  (see [HALLUCINATION.md](HALLUCINATION.md)) drops to the framework-only fallback
+  *less* often on legitimate follow-ups, because retrieval now gets a query it can
+  actually match — so more replies are `grounded=True`.
 
 ---
 
@@ -139,4 +149,5 @@ retrieval found the relevant posts instead of being blind to the pronoun.
 | Stored files | `.data/threads/{thread_id}.json` |
 | Query rewriting | `actions/action_persona_chat.py` → `_rewrite_query()` |
 | Sliding window | `THREAD_HISTORY_WINDOW = 12` in `action_persona_chat.py` |
+| Rolling summary (disabled) | `_maybe_update_summary()` / `_summarize_turns()` + `store.save_thread_summary()`; call commented out in `run()` |
 | Debug signal | server log `[persona_chat] rewrite: …` + chat reply `custom.search_query` |

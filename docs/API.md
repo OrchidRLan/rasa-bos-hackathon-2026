@@ -1,134 +1,266 @@
-# API — EchoSphere
+# API — HuddleX
+
+> 所有 REST 端点由 FastAPI 服务器提供（port 8080）。
+> Next.js 通过 `next.config.ts` 代理：`/api/*` → `:8080`，`/webhooks/*` → `:5005`，`/worker/*` → `:8080`。
 
 ---
 
-## 1. Rasa REST API（主对话入口）
+## 1. FastAPI REST API（port 8080）
 
-Base URL: `http://localhost:5005`
+### 1.1 专家（personas）
 
-### 1.1 发送消息
+#### 获取所有专家
 
 ```
-POST /webhooks/rest/webhook
+GET /api/experts
 ```
 
-**Request**
-```json
-{
-  "sender": "user_001",
-  "message": "你好，切换到 Sam Altman 模式"
-}
-```
-
-**Response**
+**Response** — Expert 对象数组
 ```json
 [
   {
-    "recipient_id": "user_001",
-    "text": "好的，我现在是 Sam Altman。有什么想聊的？",
-    "custom": {
-      "persona_id": "sam_altman",
-      "tts_voice": "rime_sam_voice_id"
-    }
+    "id": "elon_musk",
+    "display_name": "Elon Musk",
+    "x_handle": "@elonmusk",
+    "x_source": "@elonmusk",
+    "wikipedia": "https://en.wikipedia.org/wiki/Elon_Musk",
+    "avatar_color": "from-slate-700 to-slate-900",
+    "initials": "EM",
+    "rime_voice_id": "",
+    "briefing": "近期 Elon 主要关注：xAI Grok...",
+    "last_updated": "2026-05-29T06:00:00Z",
+    "subtitle": ""
   }
 ]
 ```
 
 ---
 
-### 1.2 触发特定 intent（人格切换专用）
-
-前端 UI 按钮切换时直接发 intent，绕过 NLU：
+#### 获取单个专家（含完整 JSON）
 
 ```
-POST /webhooks/rest/webhook
+GET /api/experts/{persona_id}
 ```
 
-```json
-{
-  "sender": "user_001",
-  "message": "/switch_persona{\"persona_id\": \"elon_musk\"}"
-}
-```
+返回完整 `.data/personas/{id}.json` 内容，含 `cognitive_framework` 字段（蒸馏专家）。
+
+**404** — 专家不存在或尚未 seed
 
 ---
 
-### 1.3 获取会话追踪器状态
+#### 蒸馏新专家（女娲蒸馏）
 
 ```
-GET /conversations/{sender_id}/tracker
+POST /api/experts
+Content-Type: application/json
 ```
 
-用于前端初始化时恢复历史对话和当前激活人格。
-
-**Response（关键字段）**
+**Request**
 ```json
 {
-  "sender_id": "user_001",
-  "slots": {
-    "active_persona": "sam_altman",
-    "user_context": "用户是创业者，关注 AI 领域"
+  "display_name": "Richard Feynman",
+  "x_handle": "@feynmanlectures",
+  "wikipedia_url": "https://en.wikipedia.org/wiki/Richard_Feynman"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `display_name` | string | ✅ | 专家姓名，生成 persona_id |
+| `x_handle` | string | — | X 账号，可选 |
+| `wikipedia_url` | string | — | Wikipedia URL，留空则不抓取 |
+
+**Response 200** — 与 `GET /api/experts` 格式相同的单个 Expert 对象
+
+**Response 409** — `{"detail": "Expert 'Richard Feynman' already exists"}`
+
+**Response 422** — `display_name` 为空
+
+> 此接口同步执行完整 4-Phase 蒸馏流程，耗时 30-45 秒，请前端展示进度 UI。
+
+---
+
+#### 触发重新 seed（Dev Only）
+
+```
+POST /api/experts/trigger-seed?persona_id=elon_musk
+```
+
+后台启动 `seed_personas.py` 子进程，立即返回。
+
+---
+
+### 1.2 用户画像
+
+#### 获取用户画像
+
+```
+GET /api/user/{user_id}
+```
+
+**Response** — UserProfile 对象
+```json
+{
+  "user_id": "user_001",
+  "user_context": {
+    "name": "Alex",
+    "role": "AI startup founder",
+    "interests": ["AGI", "product design"],
+    "raw_description": "我是做 AI SaaS 的...",
+    "updated_at": "2026-05-29T10:05:00Z"
   },
-  "events": [...]
+  "threads": [...],
+  "global_summary": {
+    "text": "...",
+    "generated_at": "2026-05-29T06:00:00Z",
+    "thread_count": 2
+  }
 }
 ```
 
 ---
 
-## 2. 自定义 Action Server API
-
-Base URL: `http://localhost:5055`
-
-> 这些端点由 Rasa 内部调用，前端不直接访问（除 `/personas`）。
-
-### 2.1 获取人格列表（前端直接调用）
+#### 更新用户画像
 
 ```
-GET /personas
+PUT /api/user/{user_id}
+Content-Type: application/json
 ```
+
+**Request**（所有字段可选）
+```json
+{
+  "name": "Alex",
+  "role": "AI startup founder",
+  "interests": ["AGI", "fundraising"],
+  "raw_description": "我是做 AI SaaS 的创业者..."
+}
+```
+
+`interests` 做增量合并（已有 + 新增），其余字段直接覆盖。
+
+---
+
+### 1.3 对话线程
+
+#### 获取所有线程（轻量列表）
+
+```
+GET /api/threads
+```
+
+**Response** — Thread 轻量对象数组（不含 `thread_history` 消息体）
+
+---
+
+#### 获取单条线程（含消息历史）
+
+```
+GET /api/threads/{thread_id}
+```
+
+**Response** — 完整 Thread 对象，含 `thread_history` 数组
+
+---
+
+### 1.4 X 创作者数据
+
+```
+GET /api/x/creator/{handle}?max_results=20
+```
+
+实时调用 X API v2 抓取指定 handle 的最新帖子。
 
 **Response**
 ```json
 {
-  "personas": [
-    {
-      "id": "elon_musk",
-      "display_name": "Elon Musk",
-      "handle": "@elonmusk",
-      "description": "Tech entrepreneur, CEO of Tesla & SpaceX",
-      "briefing": "近期关注 xAI Grok 模型发布，讨论 AI 监管问题...",
-      "briefing_updated_at": "2026-05-29T06:00:00Z",
-      "avatar_url": "/assets/personas/elon.jpg",
-      "rime_voice_id": "voice_elon_001"
-    },
-    {
-      "id": "sam_altman",
-      "display_name": "Sam Altman",
-      "handle": "@sama",
-      "description": "CEO of OpenAI",
-      "briefing": "...",
-      "briefing_updated_at": "2026-05-29T06:00:00Z",
-      "avatar_url": "/assets/personas/sam.jpg",
-      "rime_voice_id": "voice_sam_001"
-    }
+  "profile": { "username": "elonmusk", "name": "Elon Musk", ... },
+  "posts": [
+    { "id": "...", "text": "...", "created_at": "...", "public_metrics": {...} }
   ]
+}
+```
+
+**502** — X API 调用失败
+
+---
+
+### 1.5 邮件通知
+
+```
+POST /api/notifications/email/send
+Content-Type: application/json
+```
+
+**Request**
+```json
+{
+  "to": "user@example.com",
+  "subject": "HuddleX 讨论摘要",
+  "body": "纯文本正文",
+  "html": "<h1>HTML 版本</h1>"
 }
 ```
 
 ---
 
-### 2.2 更新用户偏好（Rasa 内部 action）
+## 2. Rasa CALM API（port 5005）
 
-内部 Rasa action `ActionUpdateUserPreference` 调用，不对外暴露。
-前端通过对话触发（用户说"我是一个产品经理，喜欢..."）。
+前端直接调用的唯一 Rasa 端点。
+
+### 发送消息 / 切换人格
+
+```
+POST /webhooks/rest/webhook
+Content-Type: application/json
+```
+
+**Request**
+```json
+{
+  "sender": "thread_abc123",
+  "message": "你好，AI 安全最大的挑战是什么？"
+}
+```
+
+人格切换（UI 按钮）：
+```json
+{
+  "sender": "thread_abc123",
+  "message": "/switch_persona{\"target_persona_id\": \"sam_altman\"}"
+}
+```
+
+**Response** — RasaMessage 数组
+```json
+[
+  {
+    "recipient_id": "thread_abc123",
+    "text": "从 OpenAI 的角度看，对齐问题...",
+    "custom": {
+      "type": "persona_reply",
+      "persona_id": "sam_altman",
+      "retrieved_chunk_ids": ["wiki_summary", "tweet_042"]
+    }
+  }
+]
+```
+
+人格切换响应的 `custom.type = "switch_persona_ack"`：
+```json
+{
+  "custom": {
+    "type": "switch_persona_ack",
+    "persona": { "id": "sam_altman", "display_name": "Sam Altman", ... }
+  }
+}
+```
 
 ---
 
-## 3. Always-On Worker API
+## 3. Worker API（port 8080，路径 /worker/）
 
-Base URL: `http://localhost:5055/worker`（与 action server 共进程）
-
-### 3.1 健康检查
+### 健康检查
 
 ```
 GET /worker/health
@@ -137,79 +269,39 @@ GET /worker/health
 **Response**
 ```json
 {
-  "status": "ok",
-  "last_run": "2026-05-29T06:00:00Z",
-  "next_run": "2026-05-29T12:00:00Z",
-  "personas": {
-    "elon_musk": {
-      "embed_status": "ok",
-      "last_embed": "2026-05-29T06:00:00Z",
-      "doc_count": 342
-    },
-    "sam_altman": {
-      "embed_status": "ok",
-      "last_embed": "2026-05-29T06:00:00Z",
-      "doc_count": 218
-    }
+  "elon_musk": {
+    "embed_status": "ok",
+    "last_embed_at": "2026-05-29T06:00:00Z",
+    "doc_count": 342,
+    "last_briefing_at": "2026-05-29T06:01:30Z"
   }
 }
 ```
 
 ---
 
-### 3.2 手动触发刷新（Demo 演示用）
+### 手动触发刷新（Demo 演示用）
 
 ```
-POST /worker/trigger
+POST /worker/trigger?persona_id=elon_musk
 ```
 
-**Request**
-```json
-{
-  "persona_id": "elon_musk"   // 可选，不填则刷新所有
-}
-```
-
-**Response**
-```json
-{
-  "status": "triggered",
-  "persona_id": "elon_musk",
-  "message": "Refresh job queued"
-}
-```
+`persona_id` 可选，不填则刷新全部专家。
 
 ---
 
-## 4. 语音管道（Voice Pipeline）
+## 4. 语音管道
 
-> 语音管道不暴露独立 API，由 `voice/demo.py` 编排，通过 Rasa REST API 传递文字消息。
+语音管道不暴露独立 REST API，由前端 `useVoiceInput` hook 编排：
 
 ```
-用户语音 (mic)
-  → Speechmatics WebSocket ASR → transcript (string)
+用户语音 (MediaRecorder)
+  → /api/transcribe  (Speechmatics WebSocket via Next.js API Route)
+  → transcript string
   → POST /webhooks/rest/webhook  (message = transcript)
   → Rasa 回复 text
-  → POST https://users.rime.ai/v1/rime-tts  (text = reply)
+  → Rime TTS REST API
   → 播放音频
-```
-
-### Speechmatics 关键参数
-
-```python
-# voice/speechmatics_config.py
-LANGUAGE = "en"          # 或 "zh" 中文
-MAX_DELAY = 0.7          # 低延迟模式
-OPERATING_POINT = "enhanced"
-```
-
-### Rime TTS 关键参数
-
-```python
-# voice/rime_service.py
-SPEAKER = "voice_id_from_persona"   # 每个人格不同
-SPEED_ALPHA = 1.0
-SAMPLE_RATE = 22050
 ```
 
 ---
@@ -218,11 +310,19 @@ SAMPLE_RATE = 22050
 
 | 变量名 | 用途 | 示例值 |
 |--------|------|--------|
+| `NEBIUS_API_KEY` | Nebius LLM 推理 | `nb-...` |
+| `NEBIUS_BASE_URL` | Nebius endpoint | `https://api.tokenfactory.nebius.com/v1` |
+| `NEBIUS_MODEL` | LLM 模型 ID | `Qwen/Qwen3-235B-A22B-Instruct-2507` |
 | `RASA_PRO_LICENSE` | Rasa Pro 许可证 | `eyJ...` |
-| `NEBIUS_API_KEY` | Nebius Token Factory | `nb-...` |
-| `NEBIUS_BASE_URL` | Nebius endpoint | `https://api.studio.nebius.com/v1` |
-| `NEBIUS_MODEL` | LLM 模型 ID | `Qwen3-235B-A22B-Instruct-2507` |
 | `SPEECHMATICS_API_KEY` | Speechmatics ASR | `sm-...` |
 | `RIME_API_KEY` | Rime TTS | `rime-...` |
-| `WORKER_INTERVAL_HOURS` | 后台刷新间隔 | `6` |
-| `CHROMA_PERSIST_DIR` | Chroma 持久化目录 | `.data/chroma_db` |
+| `X_BEARER_TOKEN` | X API v2 | `AAAA...` |
+| `X_API_MODE` | `live` 或 `mock` | `mock`（默认，用预存 JSON） |
+| `X_POSTS_MAX_RESULTS` | live 模式每次抓取数量 | `30` |
+| `WORKER_INTERVAL_HOURS` | Always-On 刷新间隔 | `6` |
+| `DATA_DIR` | 数据根目录 | `.data` |
+| `PERSONA_CONFIG` | 专家配置文件路径 | `data/personas/config.yml` |
+| `SMTP_HOST` | 邮件服务器 | `smtp.gmail.com` |
+| `SMTP_PORT` | 邮件端口 | `587` |
+| `SMTP_USER` | 发件邮箱 | `noreply@example.com` |
+| `SMTP_PASSWORD` | 邮件密码 | `...` |

@@ -1,7 +1,8 @@
 # HALLUCINATION — HuddleX
 
-> How HuddleX keeps persona replies grounded in the indexed knowledge and
-> refuses to fabricate. Implementation lives in
+> How HuddleX keeps persona replies grounded in the indexed knowledge and, when
+> nothing relevant is retrieved, answers from the persona's framework without
+> inventing facts. Implementation lives in
 > `HuddleX_backend/actions/action_persona_chat.py`.
 
 ---
@@ -27,18 +28,20 @@ a persona companion bot:
 
 | Layer | Idea | Status in HuddleX |
 |-------|------|-------------------|
-| **L1 — Prompt engineering** | Constrain the LLM: answer only from context, cite sources, never fabricate | ✅ Implemented |
+| **L1 — Prompt engineering** | Constrain the LLM: answer only from context, never fabricate | ✅ Implemented |
 | **L2 — Retrieval quality** | Hybrid search (vector + keyword) + cross-encoder rerank | ⏸ Deferred (see §6) |
 | **L3 — Output validation** | A second pass (LLM/rules) checks the answer's facts are in context | ⏸ Deferred (see §6) |
-| **L4 — Fallback** | If similarity is below threshold, refuse instead of feeding weak context | ✅ Implemented |
+| **L4 — Relevance gate + safe fallback** | If similarity is below threshold, drop the weak chunks and switch to a fact-free, framework-only reply | ✅ Implemented |
 
 We implemented **L1 + L4**: the highest safety-per-effort layers, with **no new
 dependencies and no added latency** — important for the voice path.
 
-> Adaptation note: this is a *persona* bot, not a factual help desk. "Cite the
-> source" = expose the retrieved tweet IDs; "I can't confirm, contact support" =
-> an honest, in-character refusal rather than a robotic handoff. We constrain
-> fabricated *facts*, not the persona's voice.
+> Adaptation note: this is a *persona* bot, not a factual help desk. We constrain
+> fabricated *facts*, not the persona's voice. When retrieval finds nothing
+> relevant, the persona doesn't go silent — it answers from its distilled
+> *cognitive framework* (mental models, tone) under a stricter "express opinion,
+> never invent specifics" rule, and the reply is flagged `grounded=False` so the
+> UI can mark it as unsourced.
 
 ---
 
@@ -67,26 +70,30 @@ the prompt, so the model has an explicit, labeled source to ground against.
 
 ---
 
-## 4. L4 — Relevance gate + fallback
+## 4. L4 — Relevance gate + framework fallback
 
 ### 4.1 How it works
 
-`_retrieve()` now returns Chroma **distances** alongside the documents/ids. In
+`_retrieve()` returns Chroma **distances** alongside the documents/ids. In
 `run()`:
 
 1. Keep only chunks with `distance <= MAX_DISTANCE`.
-2. If **none** qualify → return an honest, in-character refusal from
-   `_fallback_reply()` **without calling the LLM** (so it physically cannot
-   hallucinate).
-3. Otherwise → send only the relevant chunks to the LLM.
+2. If **none** qualify → switch to **framework-only mode**: build the prompt from
+   the persona's distilled cognitive framework (`_build_framework_prompt()`)
+   instead of retrieved posts, and tag the reply `grounded=False`. No retrieved
+   chunks reach the model, so it has no weak "context" to over-trust — but it
+   still produces an in-character answer rather than going silent.
+3. Otherwise → send only the relevant chunks to the LLM (`grounded=True`).
 
 ```python
-docs, ids, dists = _retrieve(persona_id, user_message)
+docs, ids, dists = _retrieve(persona_id, search_query)
 relevant = [(d, i) for d, i, dist in zip(docs, ids, dists) if dist <= MAX_DISTANCE]
 if not relevant:
-    reply = _fallback_reply(persona_data)   # no LLM call
+    fw_prompt = _build_framework_prompt(persona_data, user, thread, user_message)
+    reply = <LLM(fw_prompt)>                 # framework-only, no retrieved chunks
+    # custom.grounded = False, custom.retrieved_chunk_ids = []
     ...
-    return []
+    return [SlotSet("active_persona_id", persona_id)]
 ```
 
 ### 4.2 Choosing the threshold
@@ -111,13 +118,32 @@ MAX_DISTANCE = 1.5      # ≈ cosine 0.25; env-tunable via RAG_MAX_DISTANCE
 Every query logs `best_dist` and `kept=N/total` from the action server, so the
 threshold can be retuned against real traffic.
 
-### 4.3 The fallback reply
+### 4.3 The framework fallback
 
-`_fallback_reply()` returns a fixed, in-character, honest line (no LLM call):
+When no chunk passes the gate, `_build_framework_prompt()` builds a prompt with
+**no `[RETRIEVED KNOWLEDGE]` block**. In its place the persona answers from its
+distilled `cognitive_framework` (mental models, decision heuristics, expression
+DNA) plus user/thread/team context. The `[INSTRUCTION]` block relaxes grounding
+but keeps the anti-fabrication guard:
 
-> "That's not something I've talked about in my posts, so I'd be guessing — and
-> I'd rather not put words in {name}'s mouth. Ask me about something I've actually
-> weighed in on and I'll give you the real take."
+```
+Your post database didn't return a direct match — use your personality and
+mental models as the primary lens.
+...
+5. Do NOT fabricate specific statistics, dates, or direct quotes you cannot
+   verify. Express opinion, not invented facts.
+```
+
+So the persona may apply its known reasoning style to any topic and voice an
+opinion, but is explicitly barred from inventing facts/figures/quotes. The reply
+is returned with `grounded=False` and an empty `retrieved_chunk_ids`, so the
+frontend renders it as an unsourced "can't confirm" answer.
+
+> History: an earlier design used a fixed `_fallback_reply()` canned refusal with
+> **no LLM call**. That was replaced by the framework fallback so off-topic
+> questions still get a useful, in-character answer instead of a dead end —
+> trading a hard guarantee of "zero hallucination on no-match" for "no invented
+> specifics, clearly flagged as unsourced."
 
 ---
 
@@ -128,7 +154,7 @@ Before/after on the case that used to hallucinate:
 | Question | Before | After |
 |----------|--------|-------|
 | "Are 10x engineers real?" (on-topic) | answered | ✅ `grounded=True`, cites real tweets, echoes *"10x engineers because there are 10x thinkers"* |
-| "Favorite pizza topping?" (off-topic) | ❌ invented *"I don't eat pizza, longevity diet…"* | ✅ `grounded=False`, honest refusal, **zero LLM call** |
+| "Favorite pizza topping?" (off-topic) | ❌ invented *"I don't eat pizza, longevity diet…"* | ✅ `grounded=False`, **no retrieved chunks fed to the LLM**; framework-only reply that voices an opinion without inventing specifics |
 
 The chat response `custom` payload now carries a **`grounded`** boolean and the
 `retrieved_chunk_ids` — the frontend can render a "grounded ✓ / can't confirm"
@@ -181,7 +207,7 @@ Skipped intentionally for the hackathon scope:
 |------|-------|
 | Threshold | `RAG_MAX_DISTANCE` env (default `1.5`) |
 | Retrieval count | `TOP_K = 5` in `action_persona_chat.py` |
-| Prompt rules | `_build_prompt()` → `[INSTRUCTION]` block |
-| Gate + fallback | `ActionPersonaChat.run()` and `_fallback_reply()` |
+| Prompt rules (grounded path) | `_build_prompt()` → `[INSTRUCTION]` block |
+| Gate + framework fallback | `ActionPersonaChat.run()` and `_build_framework_prompt()` |
 | Per-query debug | action-server log: `[persona_chat] persona=… best_dist=… kept=N/total` |
 | Grounding signal | chat reply `custom.grounded` + `custom.retrieved_chunk_ids` |

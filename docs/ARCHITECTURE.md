@@ -236,3 +236,4 @@ Phase 4   _quality_check()  +  _embed()
 | 后台调度 | APScheduler | 内嵌 action server 进程 |
 | Python 运行时 | Python 3.11 | uv 管理依赖 |
 | 包管理 | uv (Python) + npm (前端) | — |
+

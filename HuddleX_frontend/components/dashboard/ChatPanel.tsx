@@ -2,15 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ChevronDown, Loader2, Mic, MicOff, Send, Plus,
+  ChevronDown, Loader2, Mic, MicOff, Send,
   MessageSquarePlus, Trash2, PanelLeftClose, PanelLeftOpen,
-  Paperclip, X, FileText,
+  Paperclip, X, FileText, Brain, Users, UserCircle,
 } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useApp } from "@/lib/context";
 import { getExperts, sendMessage, switchPersona, uploadFile } from "@/lib/api";
 import { getAvatarGradient, getInitials } from "@/lib/expertUtils";
-import type { ChatMessage, Expert } from "@/lib/types";
+import type { ChatMessage, ContextMeta, Expert } from "@/lib/types";
 
 export default function ChatPanel() {
   const [input, setInput] = useState("");
@@ -113,13 +113,25 @@ export default function ChatPanel() {
         const replies = await sendMessage(sessionId, messageText, activePersona?.id, fileIds.length > 0 ? fileIds : undefined);
         const msgs: ChatMessage[] = replies
           .filter((r) => r.text)
-          .map((r, i) => ({
-            id: `reply_${Date.now()}_${i}`,
-            timestamp: new Date().toISOString(),
-            persona_id: activePersona?.id ?? null,
-            role: "assistant",
-            content: r.text!,
-          }));
+          .map((r, i) => {
+            const ctx = r.custom?.context as Record<string, unknown> | undefined;
+            const context_meta: ContextMeta | undefined = ctx
+              ? {
+                  own_chunks: (ctx.own_chunks as number) ?? 0,
+                  other_expert_msgs: (ctx.other_expert_msgs as number) ?? 0,
+                  user_profile: (ctx.user_profile as boolean) ?? false,
+                  grounded: (r.custom?.grounded as boolean) ?? false,
+                }
+              : undefined;
+            return {
+              id: `reply_${Date.now()}_${i}`,
+              timestamp: new Date().toISOString(),
+              persona_id: activePersona?.id ?? null,
+              role: "assistant",
+              content: r.text!,
+              context_meta,
+            };
+          });
         pushMessages(msgs);
       } catch (e) {
         console.error("send failed", e);
@@ -130,7 +142,7 @@ export default function ChatPanel() {
     [sessionId, activePersona, pushMessages, sending, attachedFile]
   );
 
-  const { transcript, isRecording, isTranscribing, startRecording, stopRecording } =
+  const { transcript, isTranscribing, startRecording, stopRecording } =
     useVoiceInput({ onTranscript: submit, continuous: true });
 
   const toggleVoice = useCallback(() => {
@@ -325,9 +337,51 @@ export default function ChatPanel() {
                   }`}>
                     {msg.content}
                   </div>
+                  {!isUser && msg.context_meta && (
+                    <div className="flex items-center gap-3 mt-1 px-1 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+                        <Brain className="w-3 h-3" />
+                        {msg.context_meta.own_chunks} knowledge chunk{msg.context_meta.own_chunks !== 1 ? "s" : ""}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 text-[10px] ${msg.context_meta.other_expert_msgs > 0 ? "text-violet-400" : "text-slate-300"}`}>
+                        <Users className="w-3 h-3" />
+                        {msg.context_meta.other_expert_msgs > 0
+                          ? `${msg.context_meta.other_expert_msgs} team exchange${msg.context_meta.other_expert_msgs !== 1 ? "s" : ""}`
+                          : "no team context"}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 text-[10px] ${msg.context_meta.user_profile ? "text-emerald-400" : "text-slate-300"}`}>
+                        <UserCircle className="w-3 h-3" />
+                        {msg.context_meta.user_profile ? "profile loaded" : "no profile"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
-            })
+            }))
+          }
+
+          {/* Context loading indicator */}
+          {sending && (
+            <div className="flex flex-col items-start">
+              <span className="text-xs text-slate-400 mb-1 px-1">{activePersona?.display_name ?? "Expert"}</span>
+              <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-slate-100 space-y-2">
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>Loading context…</span>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="inline-flex items-center gap-1 text-[10px] text-slate-300 animate-pulse">
+                    <Brain className="w-3 h-3" /> own memory
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[10px] text-slate-300 animate-pulse" style={{ animationDelay: "150ms" }}>
+                    <Users className="w-3 h-3" /> team exchanges
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[10px] text-slate-300 animate-pulse" style={{ animationDelay: "300ms" }}>
+                    <UserCircle className="w-3 h-3" /> user profile
+                  </span>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Live transcript preview */}

@@ -105,15 +105,59 @@ def _rewrite_query(history_text: str, user_message: str) -> str:
         return user_message
 
 
-def _fallback_reply(persona_data: dict) -> str:
-    """L4: honest, in-character refusal when no sufficiently relevant knowledge
-    was retrieved. Returned WITHOUT an LLM call, so it can never hallucinate."""
-    name = persona_data.get("display_name", "I")
-    return (
-        f"That's not something I've talked about in my posts, so I'd be guessing — "
-        f"and I'd rather not put words in {name}'s mouth. Ask me about something "
-        f"I've actually weighed in on and I'll give you the real take."
+def _build_framework_prompt(persona_data: dict, user: dict, thread: dict, user_message: str) -> str:
+    """Prompt for when no RAG chunks matched.
+    Relies on the distilled cognitive framework + user/team context instead of retrieved posts.
+    Grounding is relaxed: the persona can express opinions but must not fabricate specific facts."""
+    p = persona_data
+    ctx = user.get("user_context", {})
+    traits = ", ".join(p.get("personality_traits", []))
+    style = p.get("speaking_style", "")
+    briefing = p.get("briefing", {}).get("text", "")
+    global_summary = user.get("global_summary", {}).get("text", "")
+    thread_history_text = _format_history(thread.get("thread_history", []))
+    thread_summary = thread.get("thread_summary", "")
+    earlier_block = (
+        f"\n[EARLIER IN THIS CONVERSATION]\n{thread_summary}\n" if thread_summary else ""
     )
+    interests = ", ".join(ctx.get("interests", []))
+    framework_block = _format_cognitive_framework(p.get("cognitive_framework", {}), p["display_name"])
+    team_insights_text, _ = _extract_team_insights(thread, p["id"])
+    team_block = (
+        f"\n[TEAM INSIGHTS — What other experts said]\n{team_insights_text}\n"
+        if team_insights_text else ""
+    )
+
+    return f"""[CONTEXT 1 — YOUR IDENTITY & THINKING STYLE]
+You are {p['display_name']} ({p.get('handle', '')}).
+Personality traits: {traits}.
+Speaking style: {style}
+Today's briefing: {briefing}
+{framework_block}
+{team_block}
+[CONTEXT 3 — USER PROFILE]
+You are talking with {ctx.get('name') or 'the user'}, who is {ctx.get('role') or 'someone'}.
+Interests: {interests}. Background: {ctx.get('raw_description', '')}
+Past conversations summary: {global_summary or '(none)'}
+{earlier_block}
+[THREAD HISTORY]
+{thread_history_text or '(start of conversation)'}
+
+[INSTRUCTION]
+Respond as {p['display_name']}, in the first person, fully in character.
+Your post database didn't return a direct match — use your personality and mental models as the primary lens.
+
+Rules (strictly follow all):
+1. ALWAYS give a substantive reply. Never refuse, deflect, or say "I haven't talked about this."
+2. If asked about another person's idea or view, share YOUR genuine take on it — that's exactly what the user wants.
+3. Use your characteristic tone, rhythm, and reasoning style throughout.
+4. You may apply your mental models to any topic — real estate, geopolitics, technology, relationships, anything.
+5. Do NOT fabricate specific statistics, dates, or direct quotes you cannot verify. Express opinion, not invented facts.
+6. One reply only. Be direct and concise.
+Match the user's language (Chinese or English).
+
+User: {user_message}
+{p['display_name']}:"""
 
 
 def _format_history(messages: list[dict]) -> str:
@@ -342,29 +386,33 @@ def _build_prompt(persona_data: dict, user: dict, thread: dict,
         p.get("cognitive_framework", {}), p["display_name"]
     )
 
-    return f"""[PERSONA DEFINITION]
+    team_insights_text, _ = _extract_team_insights(thread, p["id"])
+    team_block = (
+        f"\n[CONTEXT 2 — TEAM INSIGHTS: What other experts said to this user in this conversation]\n"
+        f"{team_insights_text}\n"
+        if team_insights_text
+        else "\n[CONTEXT 2 — TEAM INSIGHTS]\n(No other experts have spoken yet in this conversation)\n"
+    )
+
+    return f"""[CONTEXT 1 — YOUR OWN MEMORY & THINKING STYLE]
 You are {p['display_name']} ({p.get('handle', '')}).
 Personality traits: {traits}.
 Speaking style: {style}
 Today's briefing (recent focus): {briefing}
 {framework_block}
 
-[USER CONTEXT]
+[RETRIEVED KNOWLEDGE — Your posts, Wikipedia, and distilled framework]
+Most relevant content from your knowledge base:
+{chunks_text}
+{team_block}
+[CONTEXT 3 — USER PROFILE]
 You are talking with {ctx.get('name') or 'the user'}, who is {ctx.get('role') or 'someone'}.
 Interests: {interests}.
 Background: {ctx.get('raw_description', '')}
-
-[GLOBAL HISTORY]
-Summary of all past conversations with this user:
-{global_summary or '(no prior conversations)'}
+Past conversations summary: {global_summary or '(no prior conversations)'}
 {earlier_block}
-[THREAD HISTORY]
-Current conversation thread (most recent at bottom):
+[THREAD HISTORY — Current conversation (most recent at bottom)]
 {thread_history_text or '(start of conversation)'}
-
-[RETRIEVED KNOWLEDGE]
-Most relevant content from your X posts and Wikipedia:
-{chunks_text}
 
 [UPLOADED FILES]
 Files attached by the user in this message:
@@ -373,18 +421,15 @@ Files attached by the user in this message:
 [INSTRUCTION]
 Respond as {p['display_name']}, in the first person and in character. Be concise.
 
-GROUNDING RULES (these override staying in character):
-- Any specific fact, number, date, event, product, or claim about the persona MUST come from
-  [RETRIEVED KNOWLEDGE] above. Do NOT invent or guess specifics — no made-up
-  policies, statistics, quotes, launches, or figures.
-- Facts about the user's uploaded files MUST come from [UPLOADED FILES].
-- If [UPLOADED FILES] contains relevant user-provided documents, use them as primary context for questions about the user's situation.
-- You may speak in your characteristic voice and express your known opinions,
-  but factual specifics must trace back to retrieved posts or uploaded files.
-- If [RETRIEVED KNOWLEDGE] and [UPLOADED FILES] do not actually address the question, say so
-  honestly in your own voice instead of fabricating an answer.
-If a cognitive framework is present above, let it shape HOW you reason, not just what you say.
-If the thread history mentions a previous persona's reply, you may acknowledge it naturally.
+RULES:
+1. ALWAYS give a substantive reply in your own voice. Never refuse or deflect.
+2. If asked about another person's idea, share YOUR genuine take — that's what the user wants.
+3. Specific facts, numbers, dates, or events about yourself MUST come from [RETRIEVED KNOWLEDGE]. Do not invent them.
+4. You MAY reason, form opinions, and comment on any topic using your mental models — opinion is not fabrication.
+5. If [RETRIEVED KNOWLEDGE] doesn't address the question, rely on your cognitive framework and known views.
+6. Facts about uploaded files MUST come from [UPLOADED FILES].
+7. If [CONTEXT 2] has insights from other experts, you may acknowledge or build on them naturally.
+8. One reply only. Be direct and concise.
 Match the user's language (Chinese or English).
 
 User: {user_message}
@@ -526,10 +571,21 @@ class ActionPersonaChat(Action):
         )
 
         if not relevant:
-            # Nothing relevant enough — refuse in-character instead of feeding
-            # the LLM junk context (the root cause of hallucination).
-            reply = _fallback_reply(persona_data)
+            # No RAG chunks matched — fall back to framework-only mode.
+            # Still call the LLM using the distilled cognitive framework + persona identity.
+            print(f"[persona_chat] no relevant chunks — using framework-only prompt", flush=True)
+            fw_prompt = _build_framework_prompt(persona_data, user, thread, user_message)
+            fw_client = OpenAI(api_key=NEBIUS_API_KEY, base_url=NEBIUS_BASE_URL)
+            fw_response = fw_client.chat.completions.create(
+                model=NEBIUS_MODEL,
+                messages=[{"role": "user", "content": fw_prompt}],
+                temperature=0.75,
+                max_tokens=512,
+            )
+            reply = fw_response.choices[0].message.content.strip()
             append_message(thread_id, persona_id, "assistant", reply, retrieved_chunks=[])
+            _, other_expert_count_fb = _extract_team_insights(thread, persona_id)
+            user_ctx_fb = user.get("user_context", {})
             dispatcher.utter_message(
                 text=reply,
                 custom={
@@ -538,12 +594,20 @@ class ActionPersonaChat(Action):
                     "retrieved_chunk_ids": [],
                     "grounded": False,
                     "search_query": search_query,
+                    "context": {
+                        "own_chunks": 0,
+                        "other_expert_msgs": other_expert_count_fb,
+                        "user_profile": bool(user_ctx_fb.get("name") or user_ctx_fb.get("role")),
+                    },
                 },
             )
             return [SlotSet("active_persona_id", persona_id)]
 
         chunks = [d for d, _ in relevant]
         chunk_ids = [i for _, i in relevant]
+        _, other_expert_count = _extract_team_insights(thread, persona_id)
+        user_ctx = user.get("user_context", {})
+        has_user_profile = bool(user_ctx.get("name") or user_ctx.get("role") or user_ctx.get("raw_description"))
         print("DEBUG latest_message:", tracker.latest_message)
         file_ids = _extract_file_ids_from_tracker(tracker)
         print("DEBUG file_ids:", file_ids)
@@ -580,6 +644,11 @@ class ActionPersonaChat(Action):
                 "retrieved_chunk_ids": chunk_ids,
                 "grounded": True,
                 "search_query": search_query,
+                "context": {
+                    "own_chunks": len(chunk_ids),
+                    "other_expert_msgs": other_expert_count,
+                    "user_profile": has_user_profile,
+                },
             },
         )
         return [SlotSet("active_persona_id", persona_id)]

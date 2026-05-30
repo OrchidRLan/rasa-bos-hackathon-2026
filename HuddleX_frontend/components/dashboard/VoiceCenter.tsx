@@ -1,19 +1,55 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Mic, MicOff, Send } from "lucide-react";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { useApp } from "@/lib/context";
-import { sendMessage } from "@/lib/api";
-import type { ChatMessage } from "@/lib/types";
+import { getExperts, sendMessage, switchPersona } from "@/lib/api";
+import type { ChatMessage, Expert } from "@/lib/types";
 
 export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => void }) {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const { sessionId, activePersona, pushMessages } = useApp();
+  // Expert dropdown
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [experts, setExperts] = useState<Expert[]>([]);
+  const [switching, setSwitching] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { sessionId, activePersona, setActivePersona, pushMessages } = useApp();
+
+  // Load expert list once
+  useEffect(() => {
+    getExperts().then(setExperts).catch(console.error);
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [dropdownOpen]);
+
+  async function handleSelectExpert(expert: Expert) {
+    if (expert.id === activePersona?.id) { setDropdownOpen(false); return; }
+    setSwitching(true);
+    try {
+      await switchPersona(sessionId, expert.id);
+      setActivePersona(expert);
+    } catch (e) {
+      console.error("switch failed", e);
+    } finally {
+      setSwitching(false);
+      setDropdownOpen(false);
+    }
+  }
 
   const submit = useCallback(
     async (text: string) => {
@@ -74,26 +110,70 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
         Voice Agent
       </p>
 
-      {/* Active expert */}
-      {activePersona && (
+      {/* Expert selector dropdown */}
+      <div className="relative" ref={dropdownRef}>
         <button
           type="button"
-          onClick={onExpertClick}
+          onClick={() => setDropdownOpen((o) => !o)}
           className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 text-left hover:border-blue-200 hover:bg-blue-50/40 transition-colors"
-          aria-label="Open experts list"
+          aria-label="Select expert"
+          aria-haspopup="listbox"
+          aria-expanded={dropdownOpen}
         >
-          <div
-            className={`w-9 h-9 rounded-full bg-gradient-to-br ${activePersona.avatar_color} flex items-center justify-center text-white text-xs font-semibold shrink-0`}
-          >
-            {activePersona.initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-slate-800 truncate">{activePersona.display_name}</p>
-            <p className="text-xs text-slate-400 truncate">{activePersona.subtitle}</p>
-          </div>
-          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+          {activePersona ? (
+            <>
+              <div
+                className={`w-9 h-9 rounded-full bg-gradient-to-br ${activePersona.avatar_color} flex items-center justify-center text-white text-xs font-semibold shrink-0`}
+              >
+                {switching ? <Loader2 className="w-4 h-4 animate-spin" /> : activePersona.initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-800 truncate">{activePersona.display_name}</p>
+                <p className="text-xs text-slate-400 truncate">{activePersona.subtitle}</p>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400 flex-1">Select an expert…</p>
+          )}
+          <ChevronDown
+            className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+          />
         </button>
-      )}
+
+        {/* Dropdown list */}
+        {dropdownOpen && experts.length > 0 && (
+          <ul
+            role="listbox"
+            className="absolute z-50 left-0 right-0 mt-1 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden"
+          >
+            {experts.map((expert) => {
+              const selected = expert.id === activePersona?.id;
+              return (
+                <li key={expert.id} role="option" aria-selected={selected}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectExpert(expert)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-blue-50 transition-colors ${
+                      selected ? "bg-blue-50/60" : ""
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-full bg-gradient-to-br ${expert.avatar_color} flex items-center justify-center text-white text-xs font-semibold shrink-0`}
+                    >
+                      {expert.initials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-800 truncate">{expert.display_name}</p>
+                      <p className="text-xs text-slate-400 truncate">{expert.subtitle}</p>
+                    </div>
+                    {selected && <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
 
       {/* Voice Agent Mode toggle */}
       <div className="flex items-center justify-between py-3 border-t border-b border-slate-100">
@@ -144,7 +224,6 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
           }}
         >
           <input
-            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={`Ask ${activePersona?.display_name ?? "an expert"}…`}
@@ -160,7 +239,7 @@ export default function VoiceCenter({ onExpertClick }: { onExpertClick?: () => v
         </form>
       )}
 
-      {/* Mic off indicator — shown when voice is off */}
+      {/* Mic off indicator */}
       {!voiceEnabled && (
         <div className="flex items-center gap-1.5 mt-1">
           <MicOff className="w-3.5 h-3.5 text-slate-300" />

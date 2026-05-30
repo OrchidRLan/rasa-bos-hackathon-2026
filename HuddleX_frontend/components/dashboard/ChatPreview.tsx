@@ -14,10 +14,10 @@ export default function ChatPreview() {
   }, [latestMessages]);
 
   return (
-    <section className="mt-6">
-      <h2 className="text-lg font-semibold text-slate-900 mb-4 px-1">Recent Activity</h2>
+    <section className="mt-6 flex flex-col flex-1 min-h-0">
+      <h2 className="text-lg font-semibold text-slate-900 mb-4 px-1 shrink-0">Recent Activity</h2>
 
-      <GlowCard className="p-4 max-h-48 overflow-y-auto space-y-3">
+      <GlowCard className="p-4 flex-1 min-h-0 overflow-y-auto space-y-3">
         {latestMessages.length === 0 ? (
           <p className="text-sm text-slate-400 text-center py-4">
             Start chatting to see messages here.

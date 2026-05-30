@@ -24,11 +24,9 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from pydantic import BaseModel
-from fastapi import HTTPException
 
 from actions.services.email_client import SMTPEmailClient, EmailClientError
 from actions.persona_store import list_personas_for_api, load_persona_data
@@ -218,3 +216,74 @@ async def send_email_notification(req: EmailSendRequest):
 
     except EmailClientError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Speech-to-text (Speechmatics) ─────────────────────────────────────────────
+
+@app.post("/api/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """VoiceCenter: transcribe a .webm audio blob via Speechmatics batch API."""
+    import httpx
+
+    api_key = os.getenv("SPEECHMATICS_API_KEY", "")
+    language = os.getenv("SPEECHMATICS_LANGUAGE", "en")
+    operating_point = os.getenv("SPEECHMATICS_OPERATING_POINT", "enhanced")
+
+    if not api_key:
+        raise HTTPException(status_code=503, detail="SPEECHMATICS_API_KEY not configured")
+
+    audio_bytes = await file.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
+    config = {
+        "type": "transcription",
+        "transcription_config": {
+            "language": language,
+            "operating_point": operating_point,
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            # Submit job
+            submit = await client.post(
+                "https://asr.api.speechmatics.com/v2/jobs/",
+                headers={"Authorization": f"Bearer {api_key}"},
+                files={"data_file": (file.filename or "audio.webm", audio_bytes, "audio/webm")},
+                data={"config": json.dumps(config)},
+            )
+            if submit.status_code not in (200, 201):
+                raise HTTPException(status_code=502, detail=f"Speechmatics submit error: {submit.text}")
+
+            job_id = submit.json()["id"]
+
+            # Poll until done (max ~30s)
+            import asyncio
+            for _ in range(30):
+                await asyncio.sleep(1)
+                status_res = await client.get(
+                    f"https://asr.api.speechmatics.com/v2/jobs/{job_id}",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                job = status_res.json().get("job", {})
+                if job.get("status") == "done":
+                    break
+                if job.get("status") == "rejected":
+                    raise HTTPException(status_code=502, detail="Speechmatics job rejected")
+
+            # Fetch transcript
+            transcript_res = await client.get(
+                f"https://asr.api.speechmatics.com/v2/jobs/{job_id}/transcript",
+                headers={"Authorization": f"Bearer {api_key}"},
+                params={"format": "txt"},
+            )
+            if not transcript_res.is_success:
+                raise HTTPException(status_code=502, detail="Failed to fetch transcript")
+
+            return {"transcript": transcript_res.text.strip()}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

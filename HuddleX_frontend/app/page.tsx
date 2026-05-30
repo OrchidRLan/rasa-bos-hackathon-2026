@@ -5,7 +5,6 @@ import Image from "next/image";
 import { BookUser, UsersRound, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import ExpertsLibrary from "@/components/dashboard/ExpertsLibrary";
 import UserInfoPanel from "@/components/dashboard/UserInfoPanel";
-import TasksPanel from "@/components/dashboard/TasksPanel";
 import ChatPanel from "@/components/dashboard/ChatPanel";
 import { BottomNav } from "@/components/dashboard/ChatPreview";
 
@@ -126,7 +125,6 @@ export default function HomePage() {
 
         {/* ── Main: unified chat panel ── */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <TasksPanel />
           <ChatPanel />
         </div>
 

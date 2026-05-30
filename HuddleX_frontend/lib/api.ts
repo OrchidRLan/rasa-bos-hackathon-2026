@@ -8,7 +8,7 @@
 // List endpoints fail soft (return []/null) so the dashboard still renders
 // when the backend is down. addExpert throws so the modal can surface the error.
 
-import type { Expert, Thread, UserProfile, RasaReply } from "@/lib/types";
+import type { Expert, Thread, UserProfile, RasaReply, ChatMessage } from "@/lib/types";
 
 // ── Personas ────────────────────────────────────────────────────────────────
 
@@ -131,6 +131,30 @@ export async function getThreads(): Promise<Thread[]> {
     return (await res.json()) as Thread[];
   } catch (e) {
     console.error("getThreads failed", e);
+    return [];
+  }
+}
+
+// Load one thread's persisted message history (used to rehydrate the chat on
+// load / thread switch). Maps the backend thread_history into ChatMessage[].
+export async function getThread(threadId: string): Promise<ChatMessage[]> {
+  try {
+    const res = await fetch(`/api/threads/${encodeURIComponent(threadId)}`);
+    if (!res.ok) throw new Error(`${res.status}`);
+    const data = await res.json();
+    const hist: unknown[] = Array.isArray(data?.thread_history) ? data.thread_history : [];
+    return hist
+      .map((m) => m as Record<string, unknown>)
+      .filter((m) => m.role !== "system_event")
+      .map((m) => ({
+        id: String(m.id ?? `msg_${Math.random().toString(36).slice(2)}`),
+        timestamp: String(m.timestamp ?? ""),
+        persona_id: (m.persona_id as string | null) ?? null,
+        role: m.role as ChatMessage["role"],
+        content: String(m.content ?? ""),
+      }));
+  } catch (e) {
+    console.error("getThread failed", e);
     return [];
   }
 }

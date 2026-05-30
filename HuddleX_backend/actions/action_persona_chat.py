@@ -36,6 +36,10 @@ DATA_DIR = os.getenv("DATA_DIR", ".data")
 CHROMA_DIR = f"{DATA_DIR}/chroma_db"
 THREAD_HISTORY_WINDOW = 12   # last N messages injected into prompt
 TOP_K = 5                     # Chroma retrieval count
+# L4 fallback: max L2 distance for a chunk to count as "relevant".
+# Measured on the seeded corpus: on-topic best matches land < 1.2,
+# off-topic / gibberish land > 1.55. 1.5 (~cosine 0.25) separates them.
+MAX_DISTANCE = float(os.getenv("RAG_MAX_DISTANCE", "1.5"))
 
 
 def _get_collection(persona_id: str):
@@ -46,14 +50,26 @@ def _get_collection(persona_id: str):
         return None
 
 
-def _retrieve(persona_id: str, query: str) -> tuple[list[str], list[str]]:
+def _retrieve(persona_id: str, query: str) -> tuple[list[str], list[str], list[float]]:
     collection = _get_collection(persona_id)
     if collection is None:
-        return [], []
+        return [], [], []
     results = collection.query(query_texts=[query], n_results=TOP_K)
     docs = results["documents"][0] if results["documents"] else []
     ids = results["ids"][0] if results["ids"] else []
-    return docs, ids
+    dists = results["distances"][0] if results.get("distances") else []
+    return docs, ids, dists
+
+
+def _fallback_reply(persona_data: dict) -> str:
+    """L4: honest, in-character refusal when no sufficiently relevant knowledge
+    was retrieved. Returned WITHOUT an LLM call, so it can never hallucinate."""
+    name = persona_data.get("display_name", "I")
+    return (
+        f"That's not something I've talked about in my posts, so I'd be guessing — "
+        f"and I'd rather not put words in {name}'s mouth. Ask me about something "
+        f"I've actually weighed in on and I'll give you the real take."
+    )
 
 
 def _format_history(messages: list[dict]) -> str:
@@ -163,10 +179,20 @@ Most relevant content from your X posts and Wikipedia:
 {chunks_text}
 
 [INSTRUCTION]
-Respond as {p['display_name']}. Stay in character. Be concise.
+Respond as {p['display_name']}, in the first person and in character. Be concise.
+
+GROUNDING RULES (these override staying in character):
+- Any specific fact, number, date, event, product, or claim MUST come from
+  [RETRIEVED KNOWLEDGE] above. Do NOT invent or guess specifics — no made-up
+  policies, statistics, quotes, launches, or figures.
+- You may speak in your characteristic voice and express your known opinions,
+  but factual specifics must trace back to the retrieved posts.
+- If [RETRIEVED KNOWLEDGE] does not actually address the question, say so
+  honestly in your own voice (e.g. that you haven't posted about it) instead of
+  fabricating an answer.
 If a cognitive framework is present above, let it shape HOW you reason, not just what you say.
 If the thread history mentions a previous persona's reply, you may acknowledge it naturally.
-Match the user's language (Chinese or English). Do not fabricate specific facts or numbers.
+Match the user's language (Chinese or English).
 
 User: {user_message}
 {p['display_name']}:"""
@@ -201,7 +227,35 @@ class ActionPersonaChat(Action):
         # Persist user message before generating reply
         append_message(thread_id, None, "user", user_message)
 
-        chunks, chunk_ids = _retrieve(persona_id, user_message)
+        docs, ids, dists = _retrieve(persona_id, user_message)
+
+        # L4 — relevance gate: keep only chunks within MAX_DISTANCE.
+        relevant = [(d, i) for d, i, dist in zip(docs, ids, dists) if dist <= MAX_DISTANCE]
+        best = min(dists) if dists else None
+        print(
+            f"[persona_chat] persona={persona_id} best_dist={best} "
+            f"kept={len(relevant)}/{len(docs)} (max={MAX_DISTANCE})",
+            flush=True,
+        )
+
+        if not relevant:
+            # Nothing relevant enough — refuse in-character instead of feeding
+            # the LLM junk context (the root cause of hallucination).
+            reply = _fallback_reply(persona_data)
+            append_message(thread_id, persona_id, "assistant", reply, retrieved_chunks=[])
+            dispatcher.utter_message(
+                text=reply,
+                custom={
+                    "type": "persona_reply",
+                    "persona_id": persona_id,
+                    "retrieved_chunk_ids": [],
+                    "grounded": False,
+                },
+            )
+            return []
+
+        chunks = [d for d, _ in relevant]
+        chunk_ids = [i for _, i in relevant]
         prompt = _build_prompt(persona_data, user, thread, chunks, user_message)
 
         client = OpenAI(api_key=NEBIUS_API_KEY, base_url=NEBIUS_BASE_URL)
@@ -223,6 +277,7 @@ class ActionPersonaChat(Action):
                 "type": "persona_reply",
                 "persona_id": persona_id,
                 "retrieved_chunk_ids": chunk_ids,
+                "grounded": True,
             },
         )
         return []

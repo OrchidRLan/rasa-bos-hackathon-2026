@@ -194,4 +194,5 @@ PERSONA_DIR=data/personas
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 系统架构图、数据流、组件说明 |
 | [docs/API.md](docs/API.md) | API 端点文档 |
 | [docs/DATABASE.md](docs/DATABASE.md) | 数据结构 Schema · Chroma 结构 · System Prompt 拼装 |
+| [docs/HALLUCINATION.md](docs/HALLUCINATION.md) | 防幻觉机制：grounding prompt + 检索相关性阈值回退 |
 | [docs/PROJECT_META.md](docs/PROJECT_META.md) | 部署记录、API key 目录、Make 命令 |
